@@ -1,0 +1,28 @@
+﻿# Build output
+build/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Booster Studio
+.booster-studio/
