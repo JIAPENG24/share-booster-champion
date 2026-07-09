@@ -26,6 +26,8 @@ class ReadyStance:
     :meth:`base_ready_target`: base positions for CENTER, SIDE, and KEEPER.
     :meth:`ready_target_for`: final target from current SetPlay and ball position,
     including own restart, opponent restart, or base target.
+    :meth:`ready_targets_for`: batch assignment for all available players based on
+    kickoff type and player count (6 scenarios).
     :meth:`goalkeeper_guard_target`: goalkeeper guard-position formula.
     """
 
@@ -89,6 +91,87 @@ class ReadyStance:
         if own_restart:
             return self._own_set_play_ready_target(slot, ball, base_target)
         return self.field.avoid_ball_target(base_target, ball)
+
+    # (is_own_kickoff, available_count) → {ReadySlot: Pose2D}
+    # Positions are mapped by slot name so READY→PLAYING slot alignment is preserved.
+    _SCENARIO_POSITIONS: dict[tuple[bool, int], dict[ReadySlot, Pose2D]] = {
+        (True, 3): {
+            ReadySlot.CENTER: Pose2D(-0.75, -0.75, 0.785),
+            ReadySlot.SIDE:   Pose2D(-1.5, 1.35, 0.0),
+            ReadySlot.KEEPER: Pose2D(-6.5, 0.0, 0.0),
+        },
+        (True, 2): {
+            ReadySlot.CENTER: Pose2D(-0.75, -0.75, 0.785),
+            ReadySlot.KEEPER: Pose2D(-6.5, 0.0, 0.0),
+        },
+        (True, 1): {
+            ReadySlot.CENTER: Pose2D(-0.75, -0.75, 0.785),
+        },
+        (False, 3): {
+            ReadySlot.CENTER: Pose2D(-2.80, -0.2, 0.0),
+            ReadySlot.SIDE:   Pose2D(-4.5, 0.8, 0.0),
+            ReadySlot.KEEPER: Pose2D(-6.0, -1.0, 0.0),
+        },
+        (False, 2): {
+            ReadySlot.CENTER: Pose2D(-3.50, 0.2, 0.0),
+            ReadySlot.KEEPER: Pose2D(-6.0, -1.0, 0.0),
+        },
+        (False, 1): {
+            ReadySlot.CENTER: Pose2D(-4.0, 0.0, 0.0),
+        },
+    }
+
+    _SLOT_PRIORITY: dict[ReadySlot, int] = {
+        ReadySlot.CENTER: 0,
+        ReadySlot.KEEPER: 1,
+        ReadySlot.SIDE: 2,
+    }
+
+    def ready_targets_for(
+        self,
+        available_player_ids: list[int],
+        is_own_kickoff: bool,
+    ) -> dict[int, Pose2D]:
+        """Batch-compute ready targets for all available players.
+
+        Two-phase assignment:
+        1. Direct slot match — if an available player's ReadySlot is in the
+           scenario dict, assign that position directly (preserves alignment).
+        2. Fill remaining — unmatched players fill vacant scenario positions,
+           sorted by slot priority (center > keeper > side).
+
+        Returns ``dict[player_id, Pose2D]`` containing only available players.
+        """
+        count = min(len(available_player_ids), 3)
+        scenario = self._SCENARIO_POSITIONS.get((is_own_kickoff, count), {})
+
+        result: dict[int, Pose2D] = {}
+        unmatched: list[int] = []
+
+        for pid in available_player_ids:
+            slot = self.config.ready_slot_for_player(pid)
+            if slot in scenario:
+                result[pid] = scenario[slot]
+            else:
+                unmatched.append(pid)
+
+        claimed_slots = {
+            self.config.ready_slot_for_player(pid) for pid in result
+        }
+        vacant_slots = sorted(
+            [s for s in scenario if s not in claimed_slots],
+            key=lambda s: self._SLOT_PRIORITY.get(s, 99),
+        )
+        unmatched.sort(
+            key=lambda pid: self._SLOT_PRIORITY.get(
+                self.config.ready_slot_for_player(pid), 99
+            ),
+        )
+
+        for pid, slot in zip(unmatched, vacant_slots):
+            result[pid] = scenario[slot]
+
+        return result
 
     def goalkeeper_guard_target(
         self,

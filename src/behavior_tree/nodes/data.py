@@ -48,6 +48,7 @@ class UpdateClock(_DataLeaf):
     def update(self) -> py_trees.common.Status:
         self.blackboard.write(BlackboardKeys.NOW, self._get_now())
         self.blackboard.write(BlackboardKeys.SAFETY_ACTIVE, False)
+        self.blackboard.write(BlackboardKeys.READY_TARGETS, None)
         return py_trees.common.Status.SUCCESS
 
 

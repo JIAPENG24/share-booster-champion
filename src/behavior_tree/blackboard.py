@@ -30,6 +30,11 @@ class BlackboardKeys:
     # Written by the caller in tick; CommitTeamCommands hands commands to it.
     EXECUTOR = "/runtime/executor"      #  Optional team command executor.
 
+    # Per-tick ready-target assignment
+    # Written by the first GoReadyTarget node each tick; cleared by the next tick's UpdateClock.
+    # Value type is dict[int, Pose2D] | None.
+    READY_TARGETS = "/team/ready_targets"
+
     # Global stop flag
     # Set True when SafetyGuards stop the team; CommitTeamCommands then stops overriding
     # commands with penalty handling. Reset by UpdateClock every tick.

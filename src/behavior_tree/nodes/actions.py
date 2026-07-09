@@ -131,14 +131,29 @@ class GoReadyTarget(_ActionLeaf):
     def _compute_command(self) -> RobotCommand | None:
         context = self._read_context()
         game = self._read_game()
-        ball = self._read_ball()
         if context is None or game is None:
             return None
-        target = self._kit.ready_stance.ready_target_for(
-            self._kit.config.ready_slot_for_player(self._player_id),
-            game,
-            ball,
-        )
+
+        assignment = self.blackboard.read(BlackboardKeys.READY_TARGETS)
+        if assignment is None:
+            available_ids = [
+                pid for pid in self._kit.config.player_ids
+                if game.is_active_player(self._kit.config.team_id, pid)
+            ]
+            is_own = game.is_restart_for_team(self._kit.config.team_id)
+            assignment = self._kit.ready_stance.ready_targets_for(
+                available_ids, is_own,
+            )
+            self.blackboard.write(BlackboardKeys.READY_TARGETS, assignment)
+
+        target = assignment.get(self._player_id)
+        if target is None:
+            self._kit.kicker.clear_player(self._player_id)
+            return _stop_or_noop_for_status(
+                self.blackboard, self._player_id,
+                "ready: player unavailable",
+            )
+
         slot = self._kit.config.ready_slot_for_player(self._player_id)
         return self._kit.motion.move_to_target(
             self._player_id, context, target, f"ready {slot.value}",
