@@ -360,14 +360,14 @@ class RobotClient:
                     team_id=self._config.team_id,
                     player_id=self._player_id,
                     direction=round(intent.direction, 3),
-                    power=round(max(1.0, min(10.0, intent.power)), 3),
+                    power=round(intent.power, 3),
                     ball_x=round(intent.ball_x, 3),
                     ball_y=round(intent.ball_y, 3),
                     reason=reason,
                 )
             self._update_kick_command(
                 direction=intent.direction,
-                power=max(1.0, min(10.0, intent.power)),
+                power=intent.power,
             )
             self._update_kick_ball(x=intent.ball_x, y=intent.ball_y)
         except Exception as exc:

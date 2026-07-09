@@ -254,6 +254,45 @@ class IsOpponentKickoffActive(_ReadOnlyLeaf):
         )
 
 
+# Our-kickoff phase
+
+
+class IsInPhase(_ReadOnlyLeaf):
+    """SUCCESS when ``KICKOFF_PHASE`` equals ``phase``."""
+
+    def __init__(self, phase: int):
+        super().__init__(f"IsInPhase({phase})")
+        self._phase = phase
+
+    def update(self) -> py_trees.common.Status:
+        current = self.blackboard.read(BlackboardKeys.KICKOFF_PHASE)
+        return (
+            py_trees.common.Status.SUCCESS
+            if current == self._phase
+            else py_trees.common.Status.FAILURE
+        )
+
+
+class HasKickStarted(_ReadOnlyLeaf):
+    """SUCCESS when the ball has moved more than 0.15 m from its initial kickoff position."""
+
+    def __init__(self):
+        super().__init__("HasKickStarted")
+
+    def update(self) -> py_trees.common.Status:
+        ball = self._read_ball()
+        init_x = self.blackboard.read(BlackboardKeys.KICKOFF_BALL_X)
+        init_y = self.blackboard.read(BlackboardKeys.KICKOFF_BALL_Y)
+        if ball is None or init_x is None or init_y is None:
+            return py_trees.common.Status.FAILURE
+        dist = math.hypot(ball.x - init_x, ball.y - init_y)
+        return (
+            py_trees.common.Status.SUCCESS
+            if dist > 0.15
+            else py_trees.common.Status.FAILURE
+        )
+
+
 # Kicking
 
 

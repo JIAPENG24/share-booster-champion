@@ -18,7 +18,12 @@ from typing import TYPE_CHECKING
 
 import py_trees
 
-from ...soccer_framework import RobotRuntimeStatus, PlayContext, PlayContextProvider
+from ...soccer_framework import (
+    GameState,
+    RobotRuntimeStatus,
+    PlayContext,
+    PlayContextProvider,
+)
 from ..blackboard import BlackboardKeys, BlackboardClient, robot_status_key
 
 if TYPE_CHECKING:
@@ -49,6 +54,17 @@ class UpdateClock(_DataLeaf):
         self.blackboard.write(BlackboardKeys.NOW, self._get_now())
         self.blackboard.write(BlackboardKeys.SAFETY_ACTIVE, False)
         self.blackboard.write(BlackboardKeys.READY_TARGETS, None)
+        # Keep KICKOFF_PHASE across ticks; reset to 0 when not PLAYING.
+        game = self.blackboard.read(BlackboardKeys.PLAY_CONTEXT)
+        if isinstance(game, PlayContext):
+            gs = game.game_state
+            if gs is not None and gs.state != GameState.PLAYING:
+                self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 0)
+                self.blackboard.write(BlackboardKeys.KICKOFF_BALL_X, None)
+                self.blackboard.write(BlackboardKeys.KICKOFF_BALL_Y, None)
+                self.blackboard.write(BlackboardKeys.KICKOFF_KICK_AT, None)
+                self.blackboard.write(BlackboardKeys.KICKOFF_EXIT_REQUESTED_AT, None)
+                self.blackboard.write(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT, None)
         return py_trees.common.Status.SUCCESS
 
 

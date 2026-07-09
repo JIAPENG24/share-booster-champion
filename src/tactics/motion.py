@@ -87,6 +87,8 @@ class MotionController:
         arrive_distance: float | None = None,
         hold_vyaw: float = 0.0,
         avoid_opponents: bool = False,
+        *,
+        speed_multiplier: float = 1.0,
     ) -> RobotCommand:
         """Generate a movement command with avoidance applied.
 
@@ -94,6 +96,8 @@ class MotionController:
         nonzero turn rate after arrival; ``avoid_opponents`` includes opponents in
         yaw avoidance. PLAY passes False so chasers are not pushed away from opponents,
         while READY/recovery/opponent restarts pass True.
+
+        ``speed_multiplier`` scales ``max_linear_speed`` (e.g. 1.3 = +30% speed).
         """
         robot = context.teammates.get(player_id)
         if robot is None or robot.pose is None:
@@ -113,6 +117,7 @@ class MotionController:
             adjusted_reason,
             arrive_dist,
             hold_vyaw,
+            speed_multiplier,
         )
 
         # Yaw avoidance: add vyaw bias
@@ -129,18 +134,27 @@ class MotionController:
         context: PlayContext,
         kick_theta: float,
         reason: str,
+        *,
+        power: float | None = None,
     ) -> RobotCommand:
-        """Generate a kick command and mark the player as kicking to trigger kick hysteresis."""
+        """Generate a kick command and mark the player as kicking to trigger kick hysteresis.
+
+        ``power`` overrides the default ``soccer_kick_power`` when given.
+        """
         ball = context.known_ball
         robot = context.teammates.get(player_id)
         if robot is None or robot.pose is None:
             return RobotCommand.stop(f"{reason}: waiting for pose")
         self._kicker.mark_kicking(player_id)
         rel_ball = field_to_relative(ball.x, ball.y, robot.pose)
+        kick_power = (
+            power if power is not None
+            else self._config.strategy.soccer_kick_power
+        )
         return RobotCommand(
             intent=KickIntent(
                 direction=normalize_angle(kick_theta - robot.pose.theta),
-                power=self._config.strategy.soccer_kick_power,
+                power=kick_power,
                 ball_x=rel_ball.x,
                 ball_y=rel_ball.y,
             ),
@@ -293,6 +307,7 @@ class MotionController:
         reason: str,
         arrive_distance: float,
         hold_vyaw: float,
+        speed_multiplier: float = 1.0,
     ) -> RobotCommand:
         """Unicycle-style movement: pure turning at long angles, then vx plus small vyaw when aligned.
 
@@ -334,20 +349,24 @@ class MotionController:
             )
 
         # Forward plus tracking turn; vx is cosine-scaled to reduce lateral drift, and vy is forced to 0.
-        vx = self._linear_speed(distance, angle_error)
+        vx = self._linear_speed(distance, angle_error, speed_multiplier)
         vyaw = self._angular_velocity(angle_error)
         return RobotCommand(intent=MoveIntent(vx=vx, vy=0.0, vyaw=vyaw), reason=reason)
 
-    def _linear_speed(self, distance: float, angle_error: float) -> float:
-        """vx equals gain * distance * cos(err), then applies floor and max clamps."""
+    def _linear_speed(self, distance: float, angle_error: float, speed_multiplier: float = 1.0) -> float:
+        """vx equals gain * distance * cos(err), then applies floor and max clamps.
+
+        ``speed_multiplier`` scales the speed limit (e.g. 1.3 = +30 %).
+        """
         if distance <= 1e-6:
             return 0.0
         raw = _LINEAR_GAIN * distance * math.cos(angle_error)
         magnitude = abs(raw)
-        floor = min(_LINEAR_SPEED_FLOOR, self._config.strategy.max_linear_speed)
+        speed_limit = self._config.strategy.max_linear_speed * speed_multiplier
+        floor = min(_LINEAR_SPEED_FLOOR, speed_limit)
         if magnitude < floor:
             return floor if raw >= 0.0 else -floor
-        return clamp(raw, -self._config.strategy.max_linear_speed, self._config.strategy.max_linear_speed)
+        return clamp(raw, -speed_limit, speed_limit)
 
     def _angular_velocity(self, angle_error: float) -> float:
         """omega equals clamp(2 * err, +/-max), then applies a floor.

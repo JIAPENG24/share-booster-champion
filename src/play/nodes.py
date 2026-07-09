@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 import py_trees
 
-from ..soccer_framework import PlayContext, Pose2D, RobotCommand
+from ..soccer_framework import PlayContext, Pose2D, ReadySlot, RobotCommand
 from ..behavior_tree.blackboard import BlackboardKeys, BlackboardClient, cmd_key
 from ..behavior_tree.nodes.conditions import IsInKickRange
 from .playbook import Playbook, RoleAssignment
@@ -339,3 +339,163 @@ def build_attack_subtree(
             ),
         ],
     )
+
+
+# ----------------------------------------------------------------------
+# Our-kickoff actions
+# ----------------------------------------------------------------------
+
+
+class SetPhase(py_trees.behaviour.Behaviour):
+    """Write ``KICKOFF_PHASE`` to the given value and return SUCCESS."""
+
+    def __init__(self, kit: "SoccerKit", phase: int):
+        super().__init__(f"SetPhase({phase})")
+        self._kit = kit
+        self._phase = phase
+        self.blackboard = BlackboardClient(name=self.name)
+
+    def update(self) -> py_trees.common.Status:
+        self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, self._phase)
+        return py_trees.common.Status.SUCCESS
+
+
+class InitiateKickoff(py_trees.behaviour.Behaviour):
+    """Write the initial ball position and start time for our-kickoff phase.
+
+    Idempotent: only writes on the first tick (when ball record is None).
+    """
+
+    def __init__(self, kit: "SoccerKit"):
+        super().__init__("InitiateKickoff")
+        self._kit = kit
+        self.blackboard = BlackboardClient(name=self.name)
+
+    def update(self) -> py_trees.common.Status:
+        if self.blackboard.read(BlackboardKeys.KICKOFF_BALL_X) is not None:
+            return py_trees.common.Status.SUCCESS
+        context = _read_play_context(self.blackboard)
+        now = self.blackboard.read(BlackboardKeys.NOW)
+        if context is None or context.ball is None or now is None:
+            return py_trees.common.Status.FAILURE
+        self.blackboard.write(BlackboardKeys.KICKOFF_BALL_X, context.ball.x)
+        self.blackboard.write(BlackboardKeys.KICKOFF_BALL_Y, context.ball.y)
+        self.blackboard.write(BlackboardKeys.KICKOFF_STARTED_AT, now)
+        return py_trees.common.Status.SUCCESS
+
+
+class AssignFixedRoles(py_trees.behaviour.Behaviour):
+    """Write a fixed role mapping to the blackboard, bypassing ``Playbook.assign_roles``."""
+
+    def __init__(
+        self,
+        kit: "SoccerKit",
+        *,
+        center_role: str,
+        side_role: str,
+        keeper_role: str,
+    ):
+        super().__init__("AssignFixedRoles")
+        self._kit = kit
+        self._center_role = center_role
+        self._side_role = side_role
+        self._keeper_role = keeper_role
+        self.blackboard = BlackboardClient(name=self.name)
+
+    def update(self) -> py_trees.common.Status:
+        mapping: dict[int, str] = {}
+        for player_id in self._kit.config.player_ids:
+            slot = self._kit.config.ready_slot_for_player(player_id)
+            if slot == ReadySlot.CENTER:
+                mapping[player_id] = self._center_role
+            elif slot == ReadySlot.SIDE:
+                mapping[player_id] = self._side_role
+            else:
+                mapping[player_id] = self._keeper_role
+        self.blackboard.write(BlackboardKeys.ROLES, RoleAssignment(mapping))
+        return py_trees.common.Status.SUCCESS
+
+
+class KickAtAngle(py_trees.behaviour.Behaviour):
+    """Kick in a fixed field-frame direction (radians).
+
+    ``power`` overrides the default ``soccer_kick_power``; ``None`` uses the default.
+    """
+
+    def __init__(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        angle_rad: float,
+        *,
+        power: float | None = None,
+    ):
+        super().__init__(f"KickAtAngle({player_id},{angle_rad:.3f})")
+        self._kit = kit
+        self._player_id = player_id
+        self._angle_rad = angle_rad
+        self._power = power
+        self.blackboard = BlackboardClient(name=self.name)
+
+    def update(self) -> py_trees.common.Status:
+        context = _read_play_context(self.blackboard)
+        if context is None:
+            return py_trees.common.Status.FAILURE
+        kit = self._kit
+        player_id = self._player_id
+        command = kit.motion.kick_command(
+            player_id,
+            context,
+            self._angle_rad,
+            "kickoff kick",
+            power=self._power,
+        )
+        self.blackboard.write(cmd_key(player_id), command)
+        return py_trees.common.Status.SUCCESS
+
+
+class MoveToLandingPoint(py_trees.behaviour.Behaviour):
+    """Move to a fixed landing point during kickoff, facing the ball."""
+
+    def __init__(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        landing_x: float,
+        landing_y: float,
+        *,
+        speed_multiplier: float = 1.0,
+    ):
+        super().__init__(f"MoveToLandingPoint({player_id})")
+        self._kit = kit
+        self._player_id = player_id
+        self._landing_x = landing_x
+        self._landing_y = landing_y
+        self._speed_multiplier = speed_multiplier
+        self.blackboard = BlackboardClient(name=self.name)
+
+    def update(self) -> py_trees.common.Status:
+        context = _read_play_context(self.blackboard)
+        if context is None:
+            return py_trees.common.Status.FAILURE
+        ball = context.ball
+        kit = self._kit
+        player_id = self._player_id
+        theta = kit.field.face_ball_theta(
+            self._landing_x, self._landing_y, ball,
+        )
+        target = Pose2D(self._landing_x, self._landing_y, theta)
+        kit.kicker.clear_player(player_id)
+        command = kit.motion.move_to_target(
+            player_id,
+            context,
+            target,
+            "kickoff chase",
+            hold_vyaw=0.0,
+            speed_multiplier=self._speed_multiplier,
+        )
+        self.blackboard.write(cmd_key(player_id), command)
+        return py_trees.common.Status.SUCCESS
+
+
+
