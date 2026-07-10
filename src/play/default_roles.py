@@ -256,5 +256,6 @@ class GoalkeeperRole(RoleStrategy):
                 reason_fn=self._guard_reason,
                 kick_reason_fn=lambda target: self._kick_reason(kit, target),
                 hold_vyaw=0.12,
+                strafe=True,
             ),
         )

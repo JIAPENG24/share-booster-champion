@@ -155,6 +155,7 @@ class AttackSubtreeConfig:
     reason_fn: ReasonFn | None = None
     kick_reason_fn: KickReasonFn | None = None
     hold_vyaw: float = 0.0
+    strafe: bool = False
 
 
 class MoveToTarget(py_trees.behaviour.Behaviour):
@@ -344,6 +345,7 @@ def build_attack_subtree(
                 config.target_fn,
                 reason_fn=config.reason_fn,
                 hold_vyaw=config.hold_vyaw,
+                strafe=config.strafe,
             ),
         ],
     )
