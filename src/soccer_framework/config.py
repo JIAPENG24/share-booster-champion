@@ -68,6 +68,7 @@ class SoccerStrategyTuning:
     # Speed limits
     # Hard output clamps in the motion layer, tied to chassis stability and field friction.
     max_linear_speed: float = 0.8  #  Linear speed limit in m/s.
+    max_lateral_speed: float = 0.6  #  Lateral speed limit in m/s for strafe movement.
     max_angular_speed: float = 1.0  #  Angular speed limit in rad/s.
 
     # Kick hysteresis

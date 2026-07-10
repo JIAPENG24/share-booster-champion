@@ -6,7 +6,8 @@ It is a reactive controller with no global path planning: each tick computes
 detour points from current obstacles and outputs velocity directly.
 
 The biped base is most stable with ``vx + vyaw`` commands. Lateral ``vy`` is
-left at zero in combined movement commands, so avoidance is split into path
+left at zero in default movement commands; strafe mode enables ``vy`` for
+sideways movement while maintaining heading. Avoidance is split into path
 detours that change the target and yaw avoidance that changes angular velocity.
 
 PLAY and READY share walking parameters. The remaining phase difference is the
@@ -56,11 +57,12 @@ class MotionController:
 
     1. **Path detour**: find the first blocking obstacle on the original path and
     create a side via point as the new target; side choice is remembered across ticks.
-    2. **Walking control**: compute unicycle velocity, ``vx + vyaw``, toward the possibly adjusted target.
+     2. **Walking control**: compute velocity (``vx + vyaw``, or ``vx + vy + vyaw`` in strafe mode) toward the possibly adjusted target.
     3. **Yaw avoidance**: add vyaw bias when nearby teammates or opponents require extra turning.
 
     The three layers change different quantities, target / velocity / angular
-    velocity, and never touch ``vy``, satisfying biped constraints.
+    velocity. In default mode ``vy`` is always 0; strafe mode enables ``vy`` for
+    lateral movement while maintaining heading toward ``target.theta``.
     """
 
     def __init__(
@@ -89,6 +91,7 @@ class MotionController:
         avoid_opponents: bool = False,
         *,
         speed_multiplier: float = 1.0,
+        strafe: bool = False,
     ) -> RobotCommand:
         """Generate a movement command with avoidance applied.
 
@@ -98,6 +101,10 @@ class MotionController:
         while READY/recovery/opponent restarts pass True.
 
         ``speed_multiplier`` scales ``max_linear_speed`` (e.g. 1.3 = +30% speed).
+
+        ``strafe`` enables lateral ``vy`` in the velocity command so the robot can
+        move sideways while maintaining ``target.theta`` facing. The biped base may
+        be less stable in this mode; test on hardware before deploying in matches.
         """
         robot = context.teammates.get(player_id)
         if robot is None or robot.pose is None:
@@ -109,7 +116,7 @@ class MotionController:
             f"{reason} via obstacle" if adjusted_target != target else reason
         )
 
-        # Walking control: compute vx + vyaw
+        # Walking control: compute vx + vyaw (and vy when strafing)
         arrive_dist = _ARRIVE_DISTANCE if arrive_distance is None else arrive_distance
         command = self._compute_velocity(
             robot.pose,
@@ -118,6 +125,7 @@ class MotionController:
             arrive_dist,
             hold_vyaw,
             speed_multiplier,
+            strafe=strafe,
         )
 
         # Yaw avoidance: add vyaw bias
@@ -308,6 +316,8 @@ class MotionController:
         arrive_distance: float,
         hold_vyaw: float,
         speed_multiplier: float = 1.0,
+        *,
+        strafe: bool = False,
     ) -> RobotCommand:
         """Unicycle-style movement: pure turning at long angles, then vx plus small vyaw when aligned.
 
@@ -316,6 +326,7 @@ class MotionController:
         Pure stop: ``vx=vy=vyaw=0``
         Pure turn: ``vyaw != 0`` and ``vx=vy=0``
         Forward plus turn: ``vx > 0``, ``vy=0``, and small ``vyaw``
+        Strafe: ``vx`` and ``vy`` both non-zero with ``vyaw`` for heading correction
         """
         dx = target.x - pose.x
         dy = target.y - pose.y
@@ -340,6 +351,37 @@ class MotionController:
 
         angle_to_target = math.atan2(dy, dx)
         angle_error = normalize_angle(angle_to_target - pose.theta)
+
+        if strafe:
+            # Strafe mode: move in any direction without turning first.
+            # Speed magnitude scales with distance (same linear gain), then
+            # decompose into body-forward (vx) and body-lateral (vy) components.
+            raw_speed = _LINEAR_GAIN * distance
+            vx = raw_speed * math.cos(angle_error)
+            vy = raw_speed * math.sin(angle_error)
+
+            # Apply per-axis speed limits
+            linear_limit = self._config.strategy.max_linear_speed * speed_multiplier
+            lateral_limit = self._config.strategy.max_lateral_speed
+            vx = clamp(vx, -linear_limit, linear_limit)
+            vy = clamp(vy, -lateral_limit, lateral_limit)
+
+            # Speed floor on combined magnitude
+            magnitude = math.hypot(vx, vy)
+            floor = min(_LINEAR_SPEED_FLOOR, linear_limit)
+            if magnitude < floor and magnitude > 1e-6:
+                scale = floor / magnitude
+                vx *= scale
+                vy *= scale
+
+            # Heading correction toward target.theta
+            vyaw = 0.0
+            if abs(final_theta_error) > 1e-6:
+                vyaw = self._angular_velocity(final_theta_error)
+
+            return RobotCommand(intent=MoveIntent(vx=vx, vy=vy, vyaw=vyaw), reason=reason)
+
+        # Non-strafe (default): original unicycle behavior
 
         # Large angle error: pure turn instead of walking while turning.
         if abs(angle_error) > _TURN_THRESHOLD:
@@ -407,17 +449,19 @@ class MotionController:
         in READY/recovery, False in PLAY to avoid pushing chasers away from opponents.
         """
         intent = command.intent
-        # Apply bias only to forward MoveIntent commands; kick, pure turn, pure strafe, and stop are unchanged.
-        if not isinstance(intent, MoveIntent) or abs(intent.vx) < 1e-6:
+        # Apply bias only to moving MoveIntent commands; kick, pure turn, pure stop are unchanged.
+        if not isinstance(intent, MoveIntent) or (abs(intent.vx) < 1e-6 and abs(intent.vy) < 1e-6):
             return command
 
         robot = context.teammates.get(player_id)
         if robot is None or robot.pose is None:
             return command
 
-        # Field-frame forward direction equals robot heading because vx is body-forward and vy is assumed 0.
-        forward_vx = intent.vx * math.cos(robot.pose.theta)
-        forward_vy = intent.vx * math.sin(robot.pose.theta)
+        # Field-frame velocity: rotate body-frame (vx, vy) to field coordinates.
+        cos_t = math.cos(robot.pose.theta)
+        sin_t = math.sin(robot.pose.theta)
+        forward_vx = intent.vx * cos_t - intent.vy * sin_t
+        forward_vy = intent.vx * sin_t + intent.vy * cos_t
         max_bias_per_neighbor = self._config.strategy.yaw_avoid_bias_max
 
         def neighbor_yaw_contribution(rel_x: float, rel_y: float) -> float:

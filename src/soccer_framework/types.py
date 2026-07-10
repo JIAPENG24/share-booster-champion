@@ -359,7 +359,8 @@ class PlayContext:
 class MoveIntent:
     """Chassis velocity intent ``(vx, vy, vyaw)`` for this tick.
 
-    The robot is a biped, so ``vx + vyaw`` is the stable combination; navigation forces lateral ``vy`` to 0.
+    The robot is a biped, so ``vx + vyaw`` is the stable combination; strafe mode
+    may set a non-zero ``vy`` for lateral movement.
     """
 
     vx: float = 0.0
