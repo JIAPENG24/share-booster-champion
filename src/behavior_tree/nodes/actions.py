@@ -195,10 +195,18 @@ class AvoidOpponentRestart(_ActionLeaf):
             robot.pose.y - ball.y,
         )
         if distance_to_ball >= avoid_distance:
-            return _stop_or_noop_for_status(
-                self.blackboard,
+            slot = self._kit.config.ready_slot_for_player(self._player_id)
+            target = self._kit.targeting.shot_block_target(
+                slot, ball,
+            )
+            return self._kit.motion.move_to_target(
                 self._player_id,
-                "avoid opponent restart: clear of ball",
+                context,
+                target,
+                "shot block",
+                arrive_distance=0.25,
+                hold_vyaw=0.0,
+                avoid_opponents=True,
             )
 
         slot = self._kit.config.ready_slot_for_player(self._player_id)

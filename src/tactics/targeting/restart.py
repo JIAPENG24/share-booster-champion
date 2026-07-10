@@ -26,7 +26,7 @@ from ...soccer_framework import (
     SoccerConfig,
     PlayContext,
 )
-from ..geometry import TeamFieldFrame
+from ..geometry import TeamFieldFrame, clamp
 from .predicates import sideline_sign
 from .recovery import BaseReadyTarget
 
@@ -34,7 +34,46 @@ from .recovery import BaseReadyTarget
 __all__ = [
     "opponent_restart_hold_vyaw",
     "opponent_restart_target",
+    "shot_block_target",
 ]
+
+
+def shot_block_target(
+    config: SoccerConfig,
+    field: TeamFieldFrame,
+    slot: ReadySlot,
+    ball: BallState,
+) -> Pose2D:
+    """Position on the ball-to-own-goal ray to block the shooting angle.
+
+    CENTER: 2.5 m behind ball, SIDE: 3.5 m behind ball,
+    KEEPER: near own goal with y tracking.
+    All targets respect the avoid-distance rule.
+    """
+    gx = field.own_goal_x()
+    gy = 0.0
+    dx = gx - ball.x
+    dy = gy - ball.y
+    dist_to_goal = math.hypot(dx, dy)
+    if dist_to_goal < 1e-6:
+        return Pose2D(gx, gy, field.attack_theta())
+
+    ux = dx / dist_to_goal
+    uy = dy / dist_to_goal
+    avoid = config.strategy.opponent_restart_avoid_distance_m
+
+    if slot == ReadySlot.KEEPER:
+        tx = gx + 0.5
+        ty = clamp(ball.y * 0.3, -config.field_width / 2.0 + 0.35, config.field_width / 2.0 - 0.35)
+        return field.clamp_inside_field(Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball)), margin=0.35)
+
+    offset = 2.5 if slot == ReadySlot.CENTER else 3.5
+    offset = max(offset, avoid + 0.1)
+    tx, ty = ball.x + ux * offset, ball.y + uy * offset
+    return field.clamp_inside_field(
+        Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball)),
+        margin=0.35,
+    )
 
 
 def opponent_restart_target(

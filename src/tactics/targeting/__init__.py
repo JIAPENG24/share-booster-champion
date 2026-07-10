@@ -217,3 +217,10 @@ class Targeting:
         game: GameControlState,
     ) -> float:
         return restart.opponent_restart_hold_vyaw(self.config, player_id, game)
+
+    def shot_block_target(
+        self,
+        slot: ReadySlot,
+        ball: BallState,
+    ) -> Pose2D:
+        return restart.shot_block_target(self.config, self.field, slot, ball)
