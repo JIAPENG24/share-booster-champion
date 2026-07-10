@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import py_trees
 
-from ..soccer_framework import PlayContext, Pose2D, ReadySlot
+from ..soccer_framework import BallState, PlayContext, Pose2D, ReadySlot
 from .nodes import AttackSubtreeConfig, MoveToTarget, build_attack_subtree
 from .role import RoleStrategy
 
@@ -103,6 +103,7 @@ class ChaserRole(RoleStrategy):
                     player_id,
                     target,
                 ),
+                speed_multiplier=1.3,
             ),
         )
 
@@ -140,6 +141,7 @@ class SupporterRole(RoleStrategy):
             lambda context: self.target(kit, player_id, context),
             reason_fn=lambda: "supporter hold",
             hold_vyaw=0.12,
+            speed_multiplier=1.3,
         )
 
 
