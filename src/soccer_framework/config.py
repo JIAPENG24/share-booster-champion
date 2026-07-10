@@ -136,7 +136,9 @@ class SoccerStrategyTuning:
     support_min_spacing_m: float = 1.15  #  Minimum teammate spacing to avoid clustering.
 
     # Goalkeeping and challenges
-    goalkeeper_challenge_margin_m: float = 0.70  #  Margin that triggers goalkeeper challenge.
+    goalkeeper_challenge_margin_m: float = 0.40  #  Margin that triggers goalkeeper challenge.
+    goalkeeper_rush_speed_multiplier: float = 1.3  #  Rush-out speed multiplier for goalkeeper.
+    goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

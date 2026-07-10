@@ -156,6 +156,8 @@ class AttackSubtreeConfig:
     kick_reason_fn: KickReasonFn | None = None
     hold_vyaw: float = 0.0
     strafe: bool = False
+    speed_multiplier: float = 1.0
+    kick_power: float | None = None
 
 
 class MoveToTarget(py_trees.behaviour.Behaviour):
@@ -227,12 +229,14 @@ class KickAction(py_trees.behaviour.Behaviour):
         kick_target_fn: TargetFn,
         *,
         reason_fn: KickReasonFn | None = None,
+        power: float | None = None,
     ):
         super().__init__(f"KickAction({player_id})")
         self._kit = kit
         self._player_id = player_id
         self._kick_target_fn = kick_target_fn
         self._reason_fn = reason_fn
+        self._power = power
         self.blackboard = BlackboardClient(name=self.name)
 
     def update(self) -> py_trees.common.Status:
@@ -258,6 +262,7 @@ class KickAction(py_trees.behaviour.Behaviour):
             context,
             kick_theta,
             reason,
+            power=self._power,
         )
         self.blackboard.write(cmd_key(player_id), command)
         return py_trees.common.Status.SUCCESS
@@ -326,6 +331,7 @@ def build_attack_subtree(
                 player_id,
                 config.kick_target_fn,
                 reason_fn=config.kick_reason_fn,
+                power=config.kick_power,
             ),
         ],
     )
@@ -346,6 +352,7 @@ def build_attack_subtree(
                 reason_fn=config.reason_fn,
                 hold_vyaw=config.hold_vyaw,
                 strafe=config.strafe,
+                speed_multiplier=config.speed_multiplier,
             ),
         ],
     )

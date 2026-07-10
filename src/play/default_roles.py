@@ -192,6 +192,12 @@ class GoalkeeperRole(RoleStrategy):
     # Approach alignment distance for goalkeeper challenges, tighter than the chaser, in meters.
     _APPROACH_OFFSET = 0.22
 
+    def __init__(self):
+        super().__init__()
+        self._last_ball_x = 0.0
+        self._last_ball_y = 0.0
+        self._last_ball_time = 0.0
+
     def target(
         self,
         kit: "SoccerKit",
@@ -200,11 +206,26 @@ class GoalkeeperRole(RoleStrategy):
         # When the ball is dangerous and kickable, target the approach point behind the ball to enter IsInKickRange.
         # Otherwise return to the goal-line guard target.
         ball = context.known_ball
+
+        # Simple velocity estimation: predict ball position ~0.3s ahead
+        dt = ball.last_seen_at - self._last_ball_time
+        if 0 < dt < 0.5:
+            vx = (ball.x - self._last_ball_x) / dt
+            vy = (ball.y - self._last_ball_y) / dt
+            pred_x = ball.x + vx * 0.3
+            pred_y = ball.y + vy * 0.3
+        else:
+            pred_x, pred_y = ball.x, ball.y
+
+        self._last_ball_x = ball.x
+        self._last_ball_y = ball.y
+        self._last_ball_time = ball.last_seen_at
+
         if self.wants_to_kick(kit, context):
             kt = self.kick_target(kit, context)
-            kick_theta = math.atan2(kt.y - ball.y, kt.x - ball.x)
+            kick_theta = math.atan2(kt.y - pred_y, kt.x - pred_x)
             return kit.motion.approach_target(
-                ball,
+                BallState(x=pred_x, y=pred_y, last_seen_at=ball.last_seen_at),
                 kick_theta,
                 self._APPROACH_OFFSET,
             )
@@ -223,10 +244,8 @@ class GoalkeeperRole(RoleStrategy):
         context: PlayContext,
     ) -> Pose2D:
         ball = context.known_ball
-        if kit.targeting.ball_near_sideline(ball):
-            return kit.targeting.sideline_recovery_target(ball)
         return Pose2D(
-            kit.field.opponent_goal_x(),
+            ball.x + 5.0,
             0.0,
             kit.field.attack_theta(),
         )
@@ -257,5 +276,7 @@ class GoalkeeperRole(RoleStrategy):
                 kick_reason_fn=lambda target: self._kick_reason(kit, target),
                 hold_vyaw=0.12,
                 strafe=True,
+                speed_multiplier=kit.config.strategy.goalkeeper_rush_speed_multiplier,
+                kick_power=kit.config.strategy.goalkeeper_kick_power,
             ),
         )

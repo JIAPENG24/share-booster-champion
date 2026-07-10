@@ -362,7 +362,7 @@ class MotionController:
 
             # Apply per-axis speed limits
             linear_limit = self._config.strategy.max_linear_speed * speed_multiplier
-            lateral_limit = self._config.strategy.max_lateral_speed
+            lateral_limit = self._config.strategy.max_lateral_speed * speed_multiplier
             vx = clamp(vx, -linear_limit, linear_limit)
             vy = clamp(vy, -lateral_limit, lateral_limit)
 
