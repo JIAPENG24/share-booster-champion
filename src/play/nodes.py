@@ -16,6 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ..tactics.geometry import clamp
+
 import py_trees
 
 from ..soccer_framework import PlayContext, Pose2D, ReadySlot, RobotCommand
@@ -171,6 +173,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
         *,
         reason_fn: ReasonFn | None = None,
         hold_vyaw: float = 0.0,
+        speed_multiplier: float = 1.0,
     ):
         super().__init__(f"MoveToTarget({player_id})")
         self._kit = kit
@@ -180,6 +183,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
             lambda: _default_move_reason(player_id)
         )
         self._hold_vyaw = hold_vyaw
+        self._speed_multiplier = speed_multiplier
         self.blackboard = BlackboardClient(name=self.name)
 
     def update(self) -> py_trees.common.Status:
@@ -200,6 +204,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
             target,
             self._reason_fn(),
             hold_vyaw=self._hold_vyaw,
+            speed_multiplier=self._speed_multiplier,
         )
         self.blackboard.write(cmd_key(player_id), command)
         return py_trees.common.Status.SUCCESS
@@ -452,6 +457,9 @@ class KickAtAngle(py_trees.behaviour.Behaviour):
         )
         self.blackboard.write(cmd_key(player_id), command)
         return py_trees.common.Status.SUCCESS
+
+
+
 
 
 class MoveToLandingPoint(py_trees.behaviour.Behaviour):

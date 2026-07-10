@@ -38,6 +38,7 @@ class BlackboardKeys:
     KICKOFF_KICK_AT = "/team/kickoff_kick_at"           # timestamp when ball first moved
     KICKOFF_EXIT_REQUESTED_AT = "/team/kickoff_exit_requested_at"
     KICKOFF_PHASE_ENTERED_AT = "/team/kickoff_phase_entered_at"
+    OPP_KICKOFF_WAS_ACTIVE = "/team/opp_kickoff_was_active"
 
     # Per-tick ready-target assignment
     # Written by the first GoReadyTarget node each tick; cleared by the next tick's UpdateClock.

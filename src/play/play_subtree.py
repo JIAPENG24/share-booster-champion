@@ -208,6 +208,49 @@ def _create_active_kickoff_roles(
 
 
 # ----------------------------------------------------------------------
+# Phase 3: OppKickoffDefense per-player slot-based behavior
+# ----------------------------------------------------------------------
+
+
+def _create_opp_defense_roles(
+    kit: "SoccerKit",
+) -> py_trees.behaviour.Behaviour:
+    """Slot-based per-player subtrees for Phase 3 OppKickoffDefense.
+
+    Each player approaches the ball at a different speed multiplier:
+    CENTER: 0.5x  — intercept.
+    SIDE:   1.3x  — press aggressively.
+    KEEPER: 1.0x  — press actively.
+    """
+
+    def _build_approach(kit: "SoccerKit", pid: int, speed: float) -> py_trees.behaviour.Behaviour:
+        target_fn = lambda ctx: kit.motion.approach_target(
+            ctx.known_ball, kit.field.attack_theta(), 0.4,
+        )
+        return MoveToTarget(
+            kit, pid, target_fn,
+            reason_fn=lambda: "opp approach",
+            speed_multiplier=speed,
+        )
+
+    children: list[py_trees.behaviour.Behaviour] = []
+    for player_id in kit.config.player_ids:
+        slot = kit.config.ready_slot_for_player(player_id)
+        if slot == ReadySlot.CENTER:
+            children.append(_build_approach(kit, player_id, 0.5))
+        elif slot == ReadySlot.SIDE:
+            children.append(_build_approach(kit, player_id, 1.3))
+        else:
+            children.append(_build_approach(kit, player_id, 1.0))
+
+    return py_trees.composites.Parallel(
+        name="OppDefRoles",
+        policy=py_trees.common.ParallelPolicy.SuccessOnAll(synchronise=False),
+        children=children,
+    )
+
+
+# ----------------------------------------------------------------------
 # Phase controller: drives KICKOFF_PHASE transitions
 # ----------------------------------------------------------------------
 
@@ -216,9 +259,11 @@ class PlayKickoffController(py_trees.behaviour.Behaviour):
     """Runs every tick before the phase selector to manage ``KICKOFF_PHASE``.
 
     Transitions:
+    - Phase 0/1/2 → 3: opponent kickoff just ended (secondary_time dropped to 0)
     - Phase 0 → 1: our kickoff is active (state=PLAYING, kicking_team=us, ball near center)
     - Phase 1 → 2: ball has moved > 0.15 m (center kicked)
     - Phase 2 → 0: side close to ball or 2 s timeout
+    - Phase 3 → 0: our player touched ball or 5 s timeout
     """
 
     def __init__(self, kit: "SoccerKit"):
@@ -234,6 +279,42 @@ class PlayKickoffController(py_trees.behaviour.Behaviour):
         context = self._read_context()
 
         if game is None:
+            return py_trees.common.Status.SUCCESS
+
+        # Track opponent kickoff active state (run every tick regardless of phase)
+        opp_was_active = bool(self.blackboard.read(BlackboardKeys.OPP_KICKOFF_WAS_ACTIVE))
+        opp_now_active = (
+            game.state == GameState.PLAYING
+            and game.set_play == SetPlay.NONE
+            and game.secondary_time > 0
+            and game.has_kicking_team()
+            and game.kicking_team != self._kit.config.team_id
+        )
+        self.blackboard.write(BlackboardKeys.OPP_KICKOFF_WAS_ACTIVE, opp_now_active)
+
+        # Falling edge: opponent just touched the ball → enter Phase 3
+        if opp_was_active and not opp_now_active and phase != 3:
+            self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 3)
+            self.blackboard.write(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT, now)
+            return py_trees.common.Status.SUCCESS
+
+        # Phase 3 → 0: our player touched ball or 5 s timeout
+        if phase == 3:
+            if context is not None and now is not None:
+                phase_entered = self.blackboard.read(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT)
+                if phase_entered is not None and now - phase_entered > 5.0:
+                    self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 0)
+                    return py_trees.common.Status.SUCCESS
+
+                if ball is not None:
+                    for pid in self._kit.config.player_ids:
+                        robot = context.teammates.get(pid)
+                        if robot is not None and robot.pose is not None:
+                            dist = math.hypot(robot.pose.x - ball.x, robot.pose.y - ball.y)
+                            if dist < 0.3:
+                                self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 0)
+                                return py_trees.common.Status.SUCCESS
+
             return py_trees.common.Status.SUCCESS
 
         # Phase 0 → 1: our kickoff detected
@@ -334,7 +415,17 @@ def create_play_subtree(
     kit: "SoccerKit",
     playbook: Playbook,
 ) -> py_trees.behaviour.Behaviour:
-    """PLAY subtree: three-phase kickoff selector over role-subtree execution."""
+    """PLAY subtree: phase selector over kickoff defense, our kickoff, and normal play."""
+
+    # Phase 3: Opponent-kickoff defense (highest priority)
+    opp_defense = py_trees.composites.Sequence(
+        name="OppKickoffDefense",
+        memory=False,
+        children=[
+            IsInPhase(3),
+            _create_opp_defense_roles(kit),
+        ],
+    )
 
     # Phase 1: Active kickoff before ball is kicked
     # Phase transition 1→2 is handled by PlayKickoffController.
@@ -376,10 +467,11 @@ def create_play_subtree(
     )
 
     # Phase controller + selector
+    # Priority: OppDefense(3) > ActiveKickoff(1) > RoleLock(2) > NormalPlay(0)
     phase_branches = py_trees.composites.Selector(
         name="KickoffPhase",
         memory=False,
-        children=[active_kickoff, role_lock, normal_play],
+        children=[opp_defense, active_kickoff, role_lock, normal_play],
     )
 
     return py_trees.composites.Sequence(

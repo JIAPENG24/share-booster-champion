@@ -65,6 +65,7 @@ class UpdateClock(_DataLeaf):
                 self.blackboard.write(BlackboardKeys.KICKOFF_KICK_AT, None)
                 self.blackboard.write(BlackboardKeys.KICKOFF_EXIT_REQUESTED_AT, None)
                 self.blackboard.write(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT, None)
+                self.blackboard.write(BlackboardKeys.OPP_KICKOFF_WAS_ACTIVE, False)
         return py_trees.common.Status.SUCCESS
 
 
