@@ -137,11 +137,13 @@ class SoccerStrategyTuning:
     support_min_spacing_m: float = 1.15  #  Minimum teammate spacing to avoid clustering.
 
     # Goalkeeping and challenges
-    goalkeeper_challenge_margin_m: float = 0.40  #  Margin that triggers goalkeeper challenge.
+    goalkeeper_challenge_area_x_ratio: float = 0.25  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
+    goalkeeper_challenge_area_y: float = 2.2  #  Y-axis half-width for defensive challenge area (m).
     goalkeeper_challenge_hysteresis_m: float = 0.30  #  Hysteresis band to prevent guard↔clear oscillation at boundary.
     goalkeeper_rush_speed_multiplier: float = 1.8  #  Rush-out/retreat speed multiplier for goalkeeper.
     goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
+    goalkeeper_prediction_max_sec: float = 1.0  #  Max ball prediction horizon for goalkeeper clearance (s).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

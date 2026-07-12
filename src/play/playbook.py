@@ -234,13 +234,9 @@ class DefaultPlaybook(Playbook):
 
             if self._keeper_could_challenge and hyst > 0.0:
                 config = self.kit.config
-                area_x = -config.field_length * 0.22
+                area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
                 half_w = config.field_width / 2.0
-                area_y = min(
-                    half_w - 0.35,
-                    config.penalty_area_width / 2.0
-                    + config.strategy.goalkeeper_challenge_margin_m,
-                )
+                area_y = min(half_w - 0.35, config.strategy.goalkeeper_challenge_area_y)
                 can = ball.x < area_x + hyst and abs(ball.y) <= area_y + hyst
             else:
                 can = raw

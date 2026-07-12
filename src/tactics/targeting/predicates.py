@@ -37,11 +37,10 @@ __all__ = [
 def ball_in_own_defensive_area(config: SoccerConfig, ball: BallState) -> bool:
     """Whether the ball is in our dangerous area where the goalkeeper should clear it."""
 
-    area_x = -config.field_length * 0.22
+    area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
     area_y = min(
         config.field_width / 2.0 - 0.35,
-        config.penalty_area_width / 2.0
-        + config.strategy.goalkeeper_challenge_margin_m,
+        config.strategy.goalkeeper_challenge_area_y,
     )
     return ball.x < area_x and abs(ball.y) <= area_y
 
