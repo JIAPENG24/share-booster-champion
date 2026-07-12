@@ -74,6 +74,9 @@ class Targeting:
     def ball_in_own_defensive_area(self, ball: BallState) -> bool:
         return predicates.ball_in_own_defensive_area(self.config, ball)
 
+    def goalkeeper_defensive_area(self) -> tuple[float, float]:
+        return predicates.goalkeeper_defensive_area(self.config)
+
     def ball_beyond_goal_line(self, ball: BallState) -> bool:
         return predicates.ball_beyond_goal_line(self.config, ball)
 

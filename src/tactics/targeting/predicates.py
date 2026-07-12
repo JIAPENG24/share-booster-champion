@@ -25,6 +25,7 @@ __all__ = [
     "ball_in_own_defensive_area",
     "ball_is_in_midfield_or_own_half",
     "ball_near_sideline",
+    "goalkeeper_defensive_area",
     "pose_for_slot",
     "side_should_challenge",
     "sideline_sign",
@@ -34,14 +35,19 @@ __all__ = [
 # Field-geometry predicates
 
 
-def ball_in_own_defensive_area(config: SoccerConfig, ball: BallState) -> bool:
-    """Whether the ball is in our dangerous area where the goalkeeper should clear it."""
-
+def goalkeeper_defensive_area(config: SoccerConfig) -> tuple[float, float]:
+    """Return (area_x, area_y) boundaries of the goalkeeper's defensive challenge area."""
     area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
     area_y = min(
         config.field_width / 2.0 - 0.35,
         config.strategy.goalkeeper_challenge_area_y,
     )
+    return area_x, area_y
+
+
+def ball_in_own_defensive_area(config: SoccerConfig, ball: BallState) -> bool:
+    """Whether the ball is in our dangerous area where the goalkeeper should clear it."""
+    area_x, area_y = goalkeeper_defensive_area(config)
     return ball.x < area_x and abs(ball.y) <= area_y
 
 

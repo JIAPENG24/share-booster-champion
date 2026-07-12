@@ -308,10 +308,7 @@ class GoalkeeperRole(RoleStrategy):
 
         if self._was_in_defensive_area and hyst > 0.0:
             # Exit hysteresis: ball must leave the area plus the hysteresis band
-            config = kit.config
-            area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
-            half_w = config.field_width / 2.0
-            area_y = min(half_w - 0.35, config.strategy.goalkeeper_challenge_area_y)
+            area_x, area_y = kit.targeting.goalkeeper_defensive_area()
             in_area = ball.x < area_x + hyst and abs(ball.y) <= area_y + hyst
         else:
             in_area = raw
