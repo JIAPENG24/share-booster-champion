@@ -92,6 +92,7 @@ class MotionController:
         *,
         speed_multiplier: float = 1.0,
         strafe: bool = False,
+        lateral_speed: float | None = None,
     ) -> RobotCommand:
         """Generate a movement command with avoidance applied.
 
@@ -126,6 +127,7 @@ class MotionController:
             hold_vyaw,
             speed_multiplier,
             strafe=strafe,
+            lateral_speed=lateral_speed,
         )
 
         # Yaw avoidance: add vyaw bias
@@ -318,6 +320,7 @@ class MotionController:
         speed_multiplier: float = 1.0,
         *,
         strafe: bool = False,
+        lateral_speed: float | None = None,
     ) -> RobotCommand:
         """Unicycle-style movement: pure turning at long angles, then vx plus small vyaw when aligned.
 
@@ -362,7 +365,10 @@ class MotionController:
 
             # Apply per-axis speed limits
             linear_limit = self._config.strategy.max_linear_speed * speed_multiplier
-            lateral_limit = self._config.strategy.max_lateral_speed * speed_multiplier
+            lateral_limit = (
+                lateral_speed if lateral_speed is not None
+                else self._config.strategy.max_lateral_speed
+            ) * speed_multiplier
             vx = clamp(vx, -linear_limit, linear_limit)
             vy = clamp(vy, -lateral_limit, lateral_limit)
 

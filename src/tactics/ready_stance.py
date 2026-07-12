@@ -7,6 +7,8 @@ held by :class:`SoccerKit`.
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..soccer_framework import (
     BallState,
     GameControlState,
@@ -176,15 +178,23 @@ class ReadyStance:
     def goalkeeper_guard_target(
         self,
         ball: BallState | None,
+        logger: Any = None,
     ) -> Pose2D:
         """Goalkeeper guard formula; the default goalkeeper role calls this."""
         keeper_x = self.field.own_goal_x() + 0.50
-        keeper_y = clamp((ball.y * 0.38) if ball else 0.0, -1.35, 1.35)
-        return Pose2D(
-            keeper_x,
-            keeper_y,
-            self.field.face_ball_theta(keeper_x, keeper_y, ball),
-        )
+        raw_y = (ball.y * 0.38) if ball else 0.0
+        keeper_y = clamp(raw_y, -1.35, 1.35)
+        theta = self.field.face_ball_theta(keeper_x, keeper_y, ball)
+        if logger is not None and self.config.debug.debug_console:
+            logger.debug(
+                f"GK guard: target=({keeper_x:.3f},{keeper_y:.3f}) "
+                f"ball.y={ball.y if ball else 0:.3f} raw_y={raw_y:.3f} clamped={keeper_y:.3f}",
+                event="goalkeeper_guard_formula",
+                keeper_x=round(keeper_x, 3), keeper_y=round(keeper_y, 3),
+                ball_y=round(ball.y, 3) if ball else 0,
+                raw_y=round(raw_y, 3), clamped=round(keeper_y, 3),
+            )
+        return Pose2D(keeper_x, keeper_y, theta)
 
     def _own_set_play_ready_target(
         self,

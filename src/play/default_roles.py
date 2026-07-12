@@ -199,6 +199,7 @@ class GoalkeeperRole(RoleStrategy):
         self._last_ball_x = 0.0
         self._last_ball_y = 0.0
         self._last_ball_time = 0.0
+        self._was_in_defensive_area = False
 
     def target(
         self,
@@ -217,28 +218,82 @@ class GoalkeeperRole(RoleStrategy):
             pred_x = ball.x + vx * 0.3
             pred_y = ball.y + vy * 0.3
         else:
+            vx = vy = 0.0
             pred_x, pred_y = ball.x, ball.y
 
         self._last_ball_x = ball.x
         self._last_ball_y = ball.y
         self._last_ball_time = ball.last_seen_at
 
-        if self.wants_to_kick(kit, context):
+        wants = self.wants_to_kick(kit, context)
+        logger = kit.logger
+        if wants:
             kt = self.kick_target(kit, context)
             kick_theta = math.atan2(kt.y - pred_y, kt.x - pred_x)
-            return kit.motion.approach_target(
+            target = kit.motion.approach_target(
                 BallState(x=pred_x, y=pred_y, last_seen_at=ball.last_seen_at),
                 kick_theta,
                 self._APPROACH_OFFSET,
             )
-        return kit.ready_stance.goalkeeper_guard_target(ball)
+        else:
+            target = kit.ready_stance.goalkeeper_guard_target(ball, logger=kit.logger)
+
+        if logger is not None and kit.config.debug.debug_console:
+            mode = "CLEAR" if wants else "GUARD"
+            dist = math.hypot(ball.x - target.x, ball.y - target.y)
+            logger.debug(
+                f"GK target: mode={mode} "
+                f"ball=({ball.x:.3f},{ball.y:.3f},v={vx:.3f},{vy:.3f}) "
+                f"pred=({pred_x:.3f},{pred_y:.3f}) "
+                f"target=({target.x:.3f},{target.y:.3f}) "
+                f"dist={dist:.3f}",
+                event="goalkeeper_target",
+                mode=mode,
+                ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                ball_vx=round(vx, 3), ball_vy=round(vy, 3),
+                pred_x=round(pred_x, 3), pred_y=round(pred_y, 3),
+                target_x=round(target.x, 3), target_y=round(target.y, 3),
+                dist=round(dist, 3),
+            )
+
+        return target
 
     def wants_to_kick(
         self,
         kit: "SoccerKit",
         context: PlayContext,
     ) -> bool:
-        return kit.targeting.ball_in_own_defensive_area(context.known_ball)
+        ball = context.known_ball
+        raw = kit.targeting.ball_in_own_defensive_area(ball)
+        hyst = kit.config.strategy.goalkeeper_challenge_hysteresis_m
+
+        if self._was_in_defensive_area and hyst > 0.0:
+            # Exit hysteresis: ball must leave the area plus the hysteresis band
+            config = kit.config
+            area_x = -config.field_length * 0.22
+            half_w = config.field_width / 2.0
+            area_y = min(
+                half_w - 0.35,
+                config.penalty_area_width / 2.0
+                + config.strategy.goalkeeper_challenge_margin_m,
+            )
+            in_area = ball.x < area_x + hyst and abs(ball.y) <= area_y + hyst
+        else:
+            in_area = raw
+
+        if in_area != self._was_in_defensive_area:
+            self._was_in_defensive_area = in_area
+            logger = kit.logger
+            if logger is not None:
+                direction = "guard→clear" if in_area else "clear→guard"
+                logger.info(
+                    f"GK {direction} "
+                    f"ball=({ball.x:.3f},{ball.y:.3f})",
+                    event="goalkeeper_state_transition",
+                    state=direction,
+                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                )
+        return in_area
 
     def kick_target(
         self,
@@ -280,5 +335,6 @@ class GoalkeeperRole(RoleStrategy):
                 strafe=True,
                 speed_multiplier=kit.config.strategy.goalkeeper_rush_speed_multiplier,
                 kick_power=kit.config.strategy.goalkeeper_kick_power,
+                lateral_speed=kit.config.strategy.goalkeeper_lateral_speed,
             ),
         )

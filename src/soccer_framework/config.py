@@ -51,6 +51,7 @@ class SoccerDebugConfig:
 
     bt_trace_ticks: str = "off"
     bt_trace_sample_sec: float = 0.5
+    debug_console: bool = False
 
 
 @dataclass
@@ -137,8 +138,10 @@ class SoccerStrategyTuning:
 
     # Goalkeeping and challenges
     goalkeeper_challenge_margin_m: float = 0.40  #  Margin that triggers goalkeeper challenge.
-    goalkeeper_rush_speed_multiplier: float = 1.3  #  Rush-out speed multiplier for goalkeeper.
+    goalkeeper_challenge_hysteresis_m: float = 0.30  #  Hysteresis band to prevent guard↔clear oscillation at boundary.
+    goalkeeper_rush_speed_multiplier: float = 1.8  #  Rush-out/retreat speed multiplier for goalkeeper.
     goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
+    goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

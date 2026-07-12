@@ -158,6 +158,7 @@ class AttackSubtreeConfig:
     strafe: bool = False
     speed_multiplier: float = 1.0
     kick_power: float | None = None
+    lateral_speed: float | None = None  # Override lateral speed limit when strafing (m/s).
 
 
 class MoveToTarget(py_trees.behaviour.Behaviour):
@@ -178,6 +179,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
         hold_vyaw: float = 0.0,
         speed_multiplier: float = 1.0,
         strafe: bool = False,
+        lateral_speed: float | None = None,
     ):
         super().__init__(f"MoveToTarget({player_id})")
         self._kit = kit
@@ -189,6 +191,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
         self._hold_vyaw = hold_vyaw
         self._speed_multiplier = speed_multiplier
         self._strafe = strafe
+        self._lateral_speed = lateral_speed
         self.blackboard = BlackboardClient(name=self.name)
 
     def update(self) -> py_trees.common.Status:
@@ -211,6 +214,7 @@ class MoveToTarget(py_trees.behaviour.Behaviour):
             hold_vyaw=self._hold_vyaw,
             speed_multiplier=self._speed_multiplier,
             strafe=self._strafe,
+            lateral_speed=self._lateral_speed,
         )
         self.blackboard.write(cmd_key(player_id), command)
         return py_trees.common.Status.SUCCESS
@@ -353,6 +357,7 @@ def build_attack_subtree(
                 hold_vyaw=config.hold_vyaw,
                 strafe=config.strafe,
                 speed_multiplier=config.speed_multiplier,
+                lateral_speed=config.lateral_speed,
             ),
         ],
     )

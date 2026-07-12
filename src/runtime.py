@@ -96,8 +96,9 @@ class SoccerKit:
     and ``kit.motion`` directly. Role selection and kick targets belong to :class:`Playbook`.
     """
 
-    def __init__(self, config: SoccerConfig):
+    def __init__(self, config: SoccerConfig, logger: Any = None):
         self.config = config
+        self.logger = logger
         self.field = TeamFieldFrame(config)
         self.obstacles = ObstacleCollector(config, self.field)
         self.targeting = Targeting(config, self.field, self.obstacles)
@@ -241,7 +242,7 @@ class SoccerTeamRuntime(TeamCommandExecutor):
         # update register(..., default=True) in play/__init__.py or call PLAYBOOKS.create("xxx", ...) here.
         from .play import PLAYBOOKS
 
-        self.kit = SoccerKit(self.config)
+        self.kit = SoccerKit(self.config, logger=logger)
         self.playbook: Playbook = PLAYBOOKS.create_default(self.kit)
         from .soccer_framework.robot import TeamRobotManager
 

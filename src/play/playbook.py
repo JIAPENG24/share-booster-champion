@@ -154,6 +154,7 @@ class DefaultPlaybook(Playbook):
         self.register_role(ChaserRole())
         self.register_role(SupporterRole())
         self.register_role(GoalkeeperRole())
+        self._keeper_could_challenge = False
 
     def assign_roles(self, context: PlayContext) -> RoleAssignment:
         chaser_id = self.select_chaser(context)
@@ -228,7 +229,35 @@ class DefaultPlaybook(Playbook):
         targeting = self.kit.targeting
         ball = context.known_ball
         if slot == ReadySlot.KEEPER:
-            return targeting.ball_in_own_defensive_area(ball)
+            raw = targeting.ball_in_own_defensive_area(ball)
+            hyst = self.kit.config.strategy.goalkeeper_challenge_hysteresis_m
+
+            if self._keeper_could_challenge and hyst > 0.0:
+                config = self.kit.config
+                area_x = -config.field_length * 0.22
+                half_w = config.field_width / 2.0
+                area_y = min(
+                    half_w - 0.35,
+                    config.penalty_area_width / 2.0
+                    + config.strategy.goalkeeper_challenge_margin_m,
+                )
+                can = ball.x < area_x + hyst and abs(ball.y) <= area_y + hyst
+            else:
+                can = raw
+
+            if can != self._keeper_could_challenge:
+                self._keeper_could_challenge = can
+                logger = self.kit.logger
+                if logger is not None:
+                    reason = "ball in defensive area" if can else "ball outside defensive area"
+                    logger.info(
+                        f"GK can{'not' if not can else ''} challenge: {reason} "
+                        f"ball=({ball.x:.3f},{ball.y:.3f})",
+                        event="goalkeeper_challenge",
+                        can_challenge=can,
+                        ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                    )
+            return can
         if slot == ReadySlot.SIDE:
             return targeting.side_should_challenge(context)
         return True
