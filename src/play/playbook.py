@@ -14,6 +14,8 @@ non-PLAY branches. To change tactics, override ``assign_roles``, customize
 
 from __future__ import annotations
 
+import math
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -155,12 +157,16 @@ class DefaultPlaybook(Playbook):
         self.register_role(SupporterRole())
         self.register_role(GoalkeeperRole())
         self._keeper_could_challenge = False
+        self._keeper_clear_locked_until = 0.0
         self._last_chaser_id: int | None = None
         self._last_game_state: object = None
+        self._last_perf_log_at: float = 0.0
+        self._chaser_lock_until: float = 0.0
 
     def assign_roles(self, context: PlayContext) -> RoleAssignment:
         chaser_id = self.select_chaser(context)
         goalkeeper_id = self._configured_goalkeeper()
+        ball = context.known_ball
 
         mapping: dict[int, str] = {}
         for player_id in self.kit.config.player_ids:
@@ -170,6 +176,11 @@ class DefaultPlaybook(Playbook):
                 mapping[player_id] = ROLE_CHASER
             else:
                 mapping[player_id] = ROLE_SUPPORTER
+
+        now = time.time()
+        if now - self._last_perf_log_at >= 2.0:
+            self._last_perf_log_at = now
+            self._log_performance(context, mapping, chaser_id, goalkeeper_id)
 
         return RoleAssignment(mapping)
 
@@ -221,7 +232,46 @@ class DefaultPlaybook(Playbook):
             ]
             chaser_id = min(tied_ids)
 
+            # Dynamic lock duration based on ball danger level
+            own_goal_x = -config.field_length / 2.0  # -7.0
+            area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
+            if ball.x < own_goal_x + 1.5:
+                lock_duration = 3.0   # very dangerous: near goal line
+            elif ball.x < area_x:
+                lock_duration = 2.0   # dangerous: in defensive area
+            else:
+                lock_duration = 0.5   # normal play
+
+            # Refresh lock every tick while ball is in defensive area,
+            # so the chaser never gets switched mid-approach.
+            now = time.time()
+            if ball.x < area_x and self._last_chaser_id is not None:
+                min_lock = now + lock_duration
+                if self._chaser_lock_until < min_lock:
+                    self._chaser_lock_until = min_lock
+
+            # Chaser switching lock: keep current chaser briefly to prevent ping-pong
+            if (self._last_chaser_id is not None
+                    and now < self._chaser_lock_until
+                    and chaser_id != self._last_chaser_id):
+                robot = context.teammates.get(self._last_chaser_id)
+                if robot is not None and robot.pose is not None:
+                    slot = config.ready_slot_for_player(self._last_chaser_id)
+                    current_score = targeting.ball_claim_score(slot, robot.pose, ball)
+                    if current_score <= best_score + 0.5:
+                        chaser_id = self._last_chaser_id
+
         if chaser_id != self._last_chaser_id:
+            now = time.time()
+            own_goal_x = -config.field_length / 2.0
+            area_x = -config.field_length * config.strategy.goalkeeper_challenge_area_x_ratio
+            if ball.x < own_goal_x + 1.5:
+                lock_duration = 3.0
+            elif ball.x < area_x:
+                lock_duration = 2.0
+            else:
+                lock_duration = 0.5
+            self._chaser_lock_until = now + lock_duration
             self._last_chaser_id = chaser_id
             logger = self.kit.logger
             if logger is not None:
@@ -255,7 +305,15 @@ class DefaultPlaybook(Playbook):
             game = context.known_game
             if self._last_game_state is not None and game.state != self._last_game_state:
                 self._keeper_could_challenge = False
+                self._keeper_clear_locked_until = 0.0
             self._last_game_state = game.state
+
+            # Time-hold: stay in clear for at least goalkeeper_clear_hold_sec
+            # after entering it, even if the ball briefly leaves the area.
+            now = time.monotonic()
+            if now < self._keeper_clear_locked_until:
+                return True
+
             raw = targeting.ball_in_own_defensive_area(ball)
             hyst = self.kit.config.strategy.goalkeeper_challenge_hysteresis_m
 
@@ -267,6 +325,11 @@ class DefaultPlaybook(Playbook):
 
             if can != self._keeper_could_challenge:
                 self._keeper_could_challenge = can
+                if can:
+                    # Arm the time-hold so the challenge decision is sticky.
+                    self._keeper_clear_locked_until = (
+                        now + self.kit.config.strategy.goalkeeper_clear_hold_sec
+                    )
                 logger = self.kit.logger
                 if logger is not None:
                     reason = "ball in defensive area" if can else "ball outside defensive area"
@@ -281,3 +344,38 @@ class DefaultPlaybook(Playbook):
         if slot == ReadySlot.SIDE:
             return targeting.side_should_challenge(context)
         return True
+
+    def _log_performance(
+        self,
+        context: PlayContext,
+        mapping: dict[int, str],
+        chaser_id: int | None,
+        goalkeeper_id: int | None,
+    ) -> None:
+        logger = self.kit.logger
+        if logger is None:
+            return
+        ball = context.known_ball
+        players: list[dict[str, object]] = []
+        parts: list[str] = [f"perf ball=({ball.x:.2f},{ball.y:.2f})"]
+        for player_id, role in mapping.items():
+            robot = context.teammates.get(player_id)
+            if robot is None or robot.pose is None:
+                continue
+            dist = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
+            players.append({
+                "id": player_id,
+                "role": role,
+                "ball_dist": round(dist, 2),
+                "x": round(robot.pose.x, 2),
+                "y": round(robot.pose.y, 2),
+                "in_attack": robot.pose.x > 0,
+            })
+            parts.append(f"p{player_id}:{role} d={dist:.2f}")
+        logger.info(
+            " ".join(parts),
+            event="performance_summary",
+            ball_x=round(ball.x, 2),
+            ball_y=round(ball.y, 2),
+            players=players,
+        )

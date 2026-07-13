@@ -74,12 +74,12 @@ class SoccerStrategyTuning:
 
     # Kick hysteresis
     # Use enter/exit thresholds plus delay to prevent flapping around distance boundaries.
-    soccer_kick_enter_distance: float = 1.5  #  Enter kick mode when distance to ball is below enter.
-    soccer_kick_exit_distance: float = 1.5  #  Exit kick mode when distance to ball is above exit; exit_delay_sec provides hysteresis.
+    soccer_kick_enter_distance: float = 2.0  #  Enter kick mode when distance to ball is below enter.
+    soccer_kick_exit_distance: float = 2.5  #  Exit kick mode when distance to ball is above exit; exit_delay_sec provides hysteresis.
     soccer_kick_power: float = 1.5  #  Kick power.
     kickoff_kick_power: float = 1.0  #  Our-kickoff-specific kick power.
     soccer_kick_min_active_sec: float = 0.7  #  Minimum active kick duration to avoid instant switching.
-    soccer_kick_exit_delay_sec: float = 0.8  #  Delay after exit condition before actually leaving kick mode.
+    soccer_kick_exit_delay_sec: float = 0.2  #  Delay after exit condition before actually leaving kick mode.
 
     # Set plays and restarts
     restart_touch_distance: float = 0.45  #  Distance threshold for "touched the ball".
@@ -140,12 +140,28 @@ class SoccerStrategyTuning:
     goalkeeper_challenge_area_x_ratio: float = 0.25  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
     goalkeeper_challenge_area_y: float = 2.2  #  Y-axis half-width for defensive challenge area (m).
     goalkeeper_challenge_hysteresis_m: float = 0.30  #  Hysteresis band to prevent guard↔clear oscillation at boundary.
+    goalkeeper_clear_hold_sec: float = 1.0  #  Minimum time the goalkeeper stays in clear state after entering it (s).
     goalkeeper_rush_speed_multiplier: float = 1.8  #  Rush-out/retreat speed multiplier for goalkeeper.
-    goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
+    goalkeeper_kick_power: float = 3.5  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
-    goalkeeper_prediction_max_sec: float = 1.5  #  Max ball prediction horizon for goalkeeper clearance (s).
     goalkeeper_guard_arc_radius: float = 1.4  #  Arc radius for guard positioning (m).
+    goalkeeper_guard_depth_m: float = 1.0  #  Guard depth off the goal line for central balls (m).
     goalkeeper_rush_speed_ratio: float = 0.8  #  Rush-speed estimation ratio for prediction (×rush_speed_multiplier).
+
+    # Ball trajectory prediction
+    ball_prediction_history_size: int = 10  #  Number of recent ball samples for velocity regression.
+    ball_prediction_kp: float = 0.6  #  PID proportional gain for velocity smoothing.
+    ball_prediction_ki: float = 0.05  #  PID integral gain for velocity smoothing.
+    ball_prediction_kd: float = 0.1  #  PID derivative gain for velocity smoothing.
+    ball_prediction_friction: float = 0.3  #  Initial friction coefficient for trajectory extrapolation (1/s).
+    ball_prediction_max_horizon_sec: float = 2.0  #  Maximum prediction horizon (s).
+
+    # Goalkeeper state machine
+    gk_state_confirm_frames: int = 3  #  Consecutive frames to confirm a state entry transition.
+    gk_state_release_frames: int = 5  #  Consecutive frames to confirm a state exit transition.
+    gk_target_smooth_speed: float = 2.0  #  Max target position change rate for trajectory smoothing (m/s).
+    gk_rush_out_margin_m: float = 0.5  #  Extra depth margin for RUSH_OUT trigger to prevent boundary oscillation (m).
+    gk_desperation_clear_margin_m: float = 0.5  #  Ball-to-goal-line distance below which GK uses desperation clear (m).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

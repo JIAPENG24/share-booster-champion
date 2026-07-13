@@ -9,12 +9,14 @@ base-class contracts.
 from __future__ import annotations
 
 import math
+import time
 from typing import TYPE_CHECKING
 
 import py_trees
 
 from ..soccer_framework import BallState, PlayContext, Pose2D, ReadySlot
 from ..tactics.geometry import normalize_angle
+from ..tactics.targeting.ball_prediction import BallPredictor
 from .nodes import AttackSubtreeConfig, MoveToTarget, build_attack_subtree
 from .role import RoleStrategy
 
@@ -141,6 +143,7 @@ class ChaserRole(RoleStrategy):
                     target,
                 ),
                 speed_multiplier=2.0,
+                kick_power=2.0,
             ),
         )
 
@@ -155,9 +158,12 @@ class SupporterRole(RoleStrategy):
 
     name = "supporter"
 
+    _PUSHOUT_LOG_INTERVAL_SEC = 2.0
+
     def __init__(self) -> None:
         self._was_pushed: bool = False
         self._pushout_logged: bool = False
+        self._last_pushout_log_at: float = 0.0
 
     def target(
         self,
@@ -177,18 +183,21 @@ class SupporterRole(RoleStrategy):
                 self._pushout_logged = False
             logger = kit.logger
             if logger is not None and was_pushed and not self._pushout_logged:
-                self._pushout_logged = True
-                logger.info(
-                    f"supporter pushout player={player_id} "
-                    f"target=({target.x:.3f},{target.y:.3f}) "
-                    f"ball=({context.known_ball.x:.3f},{context.known_ball.y:.3f})",
-                    event="supporter_pushout",
-                    player_id=player_id,
-                    target_x=round(target.x, 3),
-                    target_y=round(target.y, 3),
-                    ball_x=round(context.known_ball.x, 3),
-                    ball_y=round(context.known_ball.y, 3),
-                )
+                now = time.monotonic()
+                if now - self._last_pushout_log_at >= self._PUSHOUT_LOG_INTERVAL_SEC:
+                    self._last_pushout_log_at = now
+                    self._pushout_logged = True
+                    logger.info(
+                        f"supporter pushout player={player_id} "
+                        f"target=({target.x:.3f},{target.y:.3f}) "
+                        f"ball=({context.known_ball.x:.3f},{context.known_ball.y:.3f})",
+                        event="supporter_pushout",
+                        player_id=player_id,
+                        target_x=round(target.x, 3),
+                        target_y=round(target.y, 3),
+                        ball_x=round(context.known_ball.x, 3),
+                        ball_y=round(context.known_ball.y, 3),
+                    )
 
         return target
 
@@ -249,139 +258,215 @@ class DefenderRole(RoleStrategy):
 
 
 class GoalkeeperRole(RoleStrategy):
-    """Goalkeeper guarding and defensive-area clearance."""
+    """Goalkeeper guarding and defensive-area clearance.
+
+    Three-state machine driven by ball trajectory prediction:
+
+    - **GUARD** — default arc positioning; ball not directly threatening.
+    - **RUSH_OUT** — ball predicted to stop inside the defensive area; the
+      keeper rushes to the predicted rest point to intercept and clear.
+    - **LATERAL_BLOCK** — ball predicted to cross the goal line within the
+      posts; the keeper moves laterally along the guard-depth line to block.
+
+    State transitions are debounced (``gk_state_confirm_frames`` to enter,
+    ``gk_state_release_frames`` to exit RUSH_OUT).
+    """
 
     name = "goalkeeper"
 
-    # Approach alignment distance for goalkeeper challenges, tighter than the chaser, in meters.
+    # Approach alignment distance for goalkeeper challenges (m).
     _APPROACH_OFFSET = 0.18
+
+    # State constants
+    _GUARD = 0
+    _RUSH_OUT = 1
+    _LATERAL = 2
+
+    _STATE_NAMES = ("GUARD", "RUSH_OUT", "LATERAL")
 
     def __init__(self):
         super().__init__()
-        self._last_ball_x = 0.0
-        self._last_ball_y = 0.0
-        self._last_ball_time = 0.0
-        self._was_in_defensive_area = False
-        self._smooth_vx = 0.0
-        self._smooth_vy = 0.0
-        self._clear_plan_logged = False
-        self._guard_logged = False
+        self._predictor: BallPredictor | None = None
+        self._predictor_init = False
+        # State machine
+        self._gk_state = self._GUARD
+        self._pending_state = self._GUARD
+        self._state_confirm = 0
+        self._last_update_time: float = -1.0
+        self._last_game_state: object = None
+        # Logging
+        self._state_logged = False
         self._last_kick_dir_index = -1
+        # Trajectory smoothing
+        self._smooth_x = 0.0
+        self._smooth_y = 0.0
+        self._smooth_init = False
+
+    # ------------------------------------------------------------------
+    # Per-tick update (called once, idempotent)
+    # ------------------------------------------------------------------
+
+    def _ensure_updated(self, kit: "SoccerKit", context: PlayContext) -> None:
+        """Update predictor and evaluate state machine once per tick."""
+        ball = context.known_ball
+
+        # Reset predictor and state on game-state change (e.g. READY→PLAYING)
+        game = context.known_game
+        if game is not None and game.state != self._last_game_state:
+            self._last_game_state = game.state
+            if self._predictor is not None:
+                self._predictor.reset()
+            self._gk_state = self._GUARD
+            self._pending_state = self._GUARD
+            self._state_confirm = 0
+            self._smooth_init = False
+
+        if ball.last_seen_at == self._last_update_time:
+            return
+        self._last_update_time = ball.last_seen_at
+
+        if not self._predictor_init:
+            strat = kit.config.strategy
+            self._predictor = BallPredictor(
+                history_size=strat.ball_prediction_history_size,
+                kp=strat.ball_prediction_kp,
+                ki=strat.ball_prediction_ki,
+                kd=strat.ball_prediction_kd,
+                friction_init=strat.ball_prediction_friction,
+                max_horizon_sec=strat.ball_prediction_max_horizon_sec,
+            )
+            self._predictor_init = True
+
+        self._predictor.update(ball.x, ball.y, ball.last_seen_at)
+        self._update_gk_state(kit, context, ball)
+
+    def _update_gk_state(
+        self,
+        kit: "SoccerKit",
+        context: PlayContext,
+        ball: BallState,
+    ) -> None:
+        """Evaluate state transitions with debouncing."""
+        strat = kit.config.strategy
+
+        # Ball in opponent half → force GUARD
+        if ball.x >= 0.0:
+            self._transition(self._GUARD, kit, ball, reason="ball in opponent half")
+            return
+
+        if not self._predictor.has_history:
+            return
+
+        # --- Evaluate conditions ---
+        area_x, area_y = kit.targeting.goalkeeper_defensive_area()
+
+        # RUSH_OUT: ball predicted to stop inside defensive area (with margin
+        # to prevent oscillation when rest_point is near the area boundary).
+        rest_x, rest_y = self._predictor.predict_rest_point()
+        rush_margin = strat.gk_rush_out_margin_m
+        rush_cond = rest_x < area_x - rush_margin and abs(rest_y) <= area_y
+
+        # LATERAL: ball predicted to cross goal line within posts
+        goal_x = kit.field.own_goal_x()
+        goal_hw = kit.config.goal_width / 2.0
+        crossing = self._predictor.predict_goal_crossing(goal_x, goal_hw)
+        lateral_cond = crossing is not None and crossing[2]
+
+        # Priority: LATERAL > RUSH_OUT > GUARD
+        if lateral_cond:
+            desired = self._LATERAL
+        elif rush_cond:
+            desired = self._RUSH_OUT
+        else:
+            desired = self._GUARD
+
+        # --- Debounce ---
+        if desired == self._gk_state:
+            self._state_confirm = 0
+            self._pending_state = self._gk_state
+            return
+
+        if desired != self._pending_state:
+            self._pending_state = desired
+            self._state_confirm = 1
+        else:
+            self._state_confirm += 1
+
+        # Higher threshold to leave RUSH_OUT
+        if self._gk_state == self._RUSH_OUT and desired != self._RUSH_OUT:
+            threshold = strat.gk_state_release_frames
+        else:
+            threshold = strat.gk_state_confirm_frames
+
+        if self._state_confirm >= threshold:
+            self._transition(desired, kit, ball)
+
+    def _transition(
+        self,
+        new_state: int,
+        kit: "SoccerKit",
+        ball: BallState,
+        reason: str = "",
+    ) -> None:
+        """Execute a state transition and log it."""
+        if new_state == self._gk_state:
+            self._state_confirm = 0
+            self._pending_state = new_state
+            return
+
+        old_name = self._STATE_NAMES[self._gk_state]
+        new_name = self._STATE_NAMES[new_state]
+        self._gk_state = new_state
+        self._state_confirm = 0
+        self._pending_state = new_state
+        self._state_logged = False
+        # Reset kick direction lock on every transition
+        self._last_kick_dir_index = -1
+
+        logger = kit.logger
+        if logger is not None:
+            extra = ""
+            if reason:
+                extra = f" reason={reason}"
+            logger.info(
+                f"GK {old_name}→{new_name} "
+                f"ball=({ball.x:.3f},{ball.y:.3f}){extra}",
+                event="goalkeeper_state_transition",
+                old_state=old_name,
+                new_state=new_name,
+                ball_x=round(ball.x, 3),
+                ball_y=round(ball.y, 3),
+                reason=reason,
+            )
+
+    # ------------------------------------------------------------------
+    # Public RoleStrategy interface
+    # ------------------------------------------------------------------
 
     def target(
         self,
         kit: "SoccerKit",
         context: PlayContext,
     ) -> Pose2D:
-        # When the ball is dangerous and kickable, target the approach point behind the ball to enter IsInKickRange.
-        # Otherwise return to the goal-line guard target.
+        self._ensure_updated(kit, context)
         ball = context.known_ball
 
-        # Smoothed velocity estimation with low-pass filter
-        dt = ball.last_seen_at - self._last_ball_time
-        if 0 < dt < 0.5:
-            raw_vx = (ball.x - self._last_ball_x) / dt
-            raw_vy = (ball.y - self._last_ball_y) / dt
-            self._smooth_vx = 0.5 * self._smooth_vx + 0.5 * raw_vx
-            self._smooth_vy = 0.5 * self._smooth_vy + 0.5 * raw_vy
+        if self._gk_state == self._RUSH_OUT:
+            raw = self._rush_out_target(kit, context, ball)
+        elif self._gk_state == self._LATERAL:
+            raw = self._lateral_target(kit, context, ball)
         else:
-            self._smooth_vx *= 0.9
-            self._smooth_vy *= 0.9
+            raw = kit.ready_stance.goalkeeper_guard_target(ball)
 
-        self._last_ball_x = ball.x
-        self._last_ball_y = ball.y
-        self._last_ball_time = ball.last_seen_at
-
-        # Dynamic prediction horizon based on time-to-intercept
-        keeper_id = kit.config.goalkeeper_player_id()
-        robot = context.teammates.get(keeper_id)
-        if robot is not None and robot.pose is not None:
-            dist = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
-            rush_speed = kit.config.strategy.goalkeeper_rush_speed_ratio * kit.config.strategy.goalkeeper_rush_speed_multiplier
-            travel_time = max(dist / rush_speed, 0.2)
-            travel_time = min(travel_time, kit.config.strategy.goalkeeper_prediction_max_sec)
-        else:
-            travel_time = 0.3
-        pred_x = ball.x + self._smooth_vx * travel_time
-        pred_y = ball.y + self._smooth_vy * travel_time
-
-        wants = self.wants_to_kick(kit, context)
-        logger = kit.logger
-        if wants:
-            kt = self.kick_target(kit, context)
-            kick_theta = math.atan2(kt.y - pred_y, kt.x - pred_x)
-            target = kit.motion.approach_target(
-                BallState(x=pred_x, y=pred_y, last_seen_at=ball.last_seen_at),
-                kick_theta,
-                self._APPROACH_OFFSET,
-            )
-            target = kit.field.clamp_from_goal_obstructions(target)
-            if logger is not None and not self._clear_plan_logged:
-                dir_name = (
-                    "center" if abs(kt.y) < 1.0
-                    else "top" if kt.y > 0
-                    else "bottom"
-                )
-                logger.info(
-                    f"GK clear plan: dir={dir_name} "
-                    f"ball=({ball.x:.3f},{ball.y:.3f}) "
-                    f"pred_t={travel_time:.2f}s "
-                    f"ball_v=({self._smooth_vx:.2f},{self._smooth_vy:.2f})",
-                    event="goalkeeper_clear_plan",
-                    direction=dir_name,
-                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
-                    pred_horizon=round(travel_time, 2),
-                    ball_vx=round(self._smooth_vx, 2),
-                    ball_vy=round(self._smooth_vy, 2),
-                )
-                self._clear_plan_logged = True
-        else:
-            target = kit.ready_stance.goalkeeper_guard_target(ball)
-            if logger is not None and not self._guard_logged:
-                logger.info(
-                    f"GK guard: target=({target.x:.3f},{target.y:.3f}) "
-                    f"ball=({ball.x:.3f},{ball.y:.3f})",
-                    event="goalkeeper_guard_active",
-                    target_x=round(target.x, 3), target_y=round(target.y, 3),
-                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
-                )
-                self._guard_logged = True
-
-        return target
+        return self._smooth_target(raw, kit)
 
     def wants_to_kick(
         self,
         kit: "SoccerKit",
         context: PlayContext,
     ) -> bool:
-        ball = context.known_ball
-        raw = kit.targeting.ball_in_own_defensive_area(ball)
-        hyst = kit.config.strategy.goalkeeper_challenge_hysteresis_m
-
-        if self._was_in_defensive_area and hyst > 0.0:
-            # Exit hysteresis: ball must leave the area plus the hysteresis band
-            area_x, area_y = kit.targeting.goalkeeper_defensive_area()
-            in_area = ball.x < area_x + hyst and abs(ball.y) <= area_y + hyst
-        else:
-            in_area = raw
-
-        if in_area != self._was_in_defensive_area:
-            self._was_in_defensive_area = in_area
-            if in_area:
-                self._clear_plan_logged = False
-                self._guard_logged = False
-                self._last_kick_dir_index = -1
-            logger = kit.logger
-            if logger is not None:
-                direction = "guard→clear" if in_area else "clear→guard"
-                logger.info(
-                    f"GK {direction} "
-                    f"ball=({ball.x:.3f},{ball.y:.3f})",
-                    event="goalkeeper_state_transition",
-                    state=direction,
-                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
-                )
-        return in_area
+        self._ensure_updated(kit, context)
+        return self._gk_state == self._RUSH_OUT
 
     def kick_target(
         self,
@@ -390,36 +475,56 @@ class GoalkeeperRole(RoleStrategy):
     ) -> Pose2D:
         ball = context.known_ball
 
-        # Static ball in goal area → force forward center clearance
-        ball_speed = math.hypot(self._smooth_vx, self._smooth_vy)
+        clear_x = kit.field.opponent_goal_x() - 0.7
         own_goal_x = kit.field.own_goal_x()
+
+        # Desperation clear: ball within margin of goal line — kick as far as
+        # possible toward the opponent goal, ignoring direction optimisation.
+        desperation_margin = kit.config.strategy.gk_desperation_clear_margin_m
+        if ball.x < own_goal_x + desperation_margin:
+            return Pose2D(kit.field.opponent_goal_x(), 0.0, kit.field.attack_theta())
+
+        # Defensive fallback if predictor not yet initialised
+        if self._predictor is None:
+            return Pose2D(clear_x, 0.0, kit.field.attack_theta())
+
+        # Static ball in goal area → force forward center clearance
+        ball_speed = math.hypot(self._predictor.smooth_vx, self._predictor.smooth_vy)
         if ball.x < own_goal_x + 0.8 and ball_speed < 0.3:
-            return Pose2D(6.30, 0.0, kit.field.attack_theta())
+            return Pose2D(clear_x, 0.0, kit.field.attack_theta())
 
         keeper_id = kit.config.goalkeeper_player_id()
         robot = context.teammates.get(keeper_id)
         if robot is None or robot.pose is None:
-            return Pose2D(6.30, 0.0, kit.field.attack_theta())
+            return Pose2D(clear_x, 0.0, kit.field.attack_theta())
 
         goal_w = kit.config.goal_width
         candidates = [
-            (6.30, 0.0),                         # opponent half center
-            (6.30, goal_w * 0.5),                # opponent goal top post
-            (6.30, -goal_w * 0.5),               # opponent goal bottom post
+            (clear_x, 0.0),                        # opponent half center
+            (clear_x, goal_w * 0.5),               # opponent goal top post
+            (clear_x, -goal_w * 0.5),              # opponent goal bottom post
+            (clear_x, 3.0),                        # top sideline
+            (clear_x, -3.0),                       # bottom sideline
         ]
+        dir_names = ("center", "top", "bottom", "top_side", "bottom_side")
 
         # Lock direction for the entire clear cycle
         if self._last_kick_dir_index == -1:
+            obstacles = kit.obstacles.opponent_obstacles(context)
             best_index = 0
-            best_diff = float("inf")
+            best_combined = -float("inf")
             for i, (tx, ty) in enumerate(candidates):
+                lane = kit.targeting.lane_clear_score(
+                    ball.x, ball.y, tx, ty, obstacles,
+                )
                 theta = math.atan2(ty - ball.y, tx - ball.x)
-                diff = abs(normalize_angle(theta - robot.pose.theta))
-                if diff < best_diff:
-                    best_diff = diff
+                turn = abs(normalize_angle(theta - robot.pose.theta))
+                combined = lane - 0.3 * turn
+                if combined > best_combined:
+                    best_combined = combined
                     best_index = i
             self._last_kick_dir_index = best_index
-            dir_name = ("center", "top", "bottom")[best_index]
+            dir_name = dir_names[best_index]
             logger = kit.logger
             if logger is not None:
                 logger.info(
@@ -435,6 +540,123 @@ class GoalkeeperRole(RoleStrategy):
         return Pose2D(candidates[self._last_kick_dir_index][0],
                       candidates[self._last_kick_dir_index][1],
                       kit.field.attack_theta())
+
+    # ------------------------------------------------------------------
+    # State-specific target computations
+    # ------------------------------------------------------------------
+
+    def _rush_out_target(
+        self,
+        kit: "SoccerKit",
+        context: PlayContext,
+        ball: BallState,
+    ) -> Pose2D:
+        """Approach the predicted rest point to intercept and clear."""
+        rest_x, rest_y = self._predictor.predict_rest_point()
+
+        kt = self.kick_target(kit, context)
+        kick_theta = math.atan2(kt.y - rest_y, kt.x - rest_x)
+        target = kit.motion.approach_target(
+            BallState(x=rest_x, y=rest_y, last_seen_at=ball.last_seen_at),
+            kick_theta,
+            self._APPROACH_OFFSET,
+        )
+        target = kit.field.clamp_from_goal_obstructions(target)
+
+        logger = kit.logger
+        if logger is not None and not self._state_logged:
+            self._state_logged = True
+            dir_name = (
+                "center" if abs(kt.y) < 1.0
+                else "top" if kt.y > 0
+                else "bottom"
+            )
+            logger.info(
+                f"GK rush-out plan: dir={dir_name} "
+                f"ball=({ball.x:.3f},{ball.y:.3f}) "
+                f"rest_pred=({rest_x:.3f},{rest_y:.3f}) "
+                f"ball_v=({self._predictor.smooth_vx:.2f},{self._predictor.smooth_vy:.2f}) "
+                f"mu={self._predictor.friction:.2f}",
+                event="goalkeeper_rush_out",
+                direction=dir_name,
+                ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                rest_x=round(rest_x, 3), rest_y=round(rest_y, 3),
+                ball_vx=round(self._predictor.smooth_vx, 2),
+                ball_vy=round(self._predictor.smooth_vy, 2),
+                friction=round(self._predictor.friction, 2),
+            )
+
+        return target
+
+    def _lateral_target(
+        self,
+        kit: "SoccerKit",
+        context: PlayContext,
+        ball: BallState,
+    ) -> Pose2D:
+        """Lateral intercept along the guard-depth line."""
+        goal_x = kit.field.own_goal_x()
+        goal_hw = kit.config.goal_width / 2.0
+        guard_x = goal_x + kit.config.strategy.goalkeeper_guard_depth_m
+
+        crossing = self._predictor.predict_goal_crossing(goal_x, goal_hw)
+        if crossing is not None:
+            cross_y = max(-goal_hw, min(goal_hw, crossing[1]))
+        else:
+            cross_y = 0.0
+
+        theta = kit.field.face_ball_theta(guard_x, cross_y, ball)
+        target = Pose2D(guard_x, cross_y, theta)
+
+        logger = kit.logger
+        if logger is not None and not self._state_logged:
+            self._state_logged = True
+            t_cross = crossing[0] if crossing is not None else -1.0
+            logger.info(
+                f"GK lateral block: cross_y={cross_y:.3f} "
+                f"t_cross={t_cross:.2f}s "
+                f"ball=({ball.x:.3f},{ball.y:.3f})",
+                event="goalkeeper_lateral",
+                cross_y=round(cross_y, 3),
+                t_cross=round(t_cross, 2),
+                ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+            )
+
+        return target
+
+    # ------------------------------------------------------------------
+    # Trajectory smoothing layer
+    # ------------------------------------------------------------------
+
+    def _smooth_target(self, raw: Pose2D, kit: "SoccerKit") -> Pose2D:
+        """Rate-limit target position to prevent sudden jumps on state change."""
+        if not self._smooth_init:
+            self._smooth_x = raw.x
+            self._smooth_y = raw.y
+            self._smooth_init = True
+            return raw
+
+        max_speed = kit.config.strategy.gk_target_smooth_speed
+        dt = 1.0 / kit.config.control_hz
+        max_delta = max_speed * dt
+
+        dx = raw.x - self._smooth_x
+        dy = raw.y - self._smooth_y
+        dist = math.hypot(dx, dy)
+
+        if dist > max_delta and dist > 0.001:
+            scale = max_delta / dist
+            self._smooth_x += dx * scale
+            self._smooth_y += dy * scale
+        else:
+            self._smooth_x = raw.x
+            self._smooth_y = raw.y
+
+        return Pose2D(self._smooth_x, self._smooth_y, raw.theta)
+
+    # ------------------------------------------------------------------
+    # Build
+    # ------------------------------------------------------------------
 
     def _guard_reason(self) -> str:
         return "goalkeeper guard"

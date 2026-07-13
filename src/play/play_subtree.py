@@ -296,6 +296,29 @@ class PlayKickoffController(py_trees.behaviour.Behaviour):
         if opp_was_active and not opp_now_active and phase != 3:
             self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 3)
             self.blackboard.write(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT, now)
+            logger = self._kit.logger
+            if logger is not None and ball is not None:
+                players: list[dict[str, object]] = []
+                parts: list[str] = [f"ball=({ball.x:.3f},{ball.y:.3f})"]
+                for pid in self._kit.config.player_ids:
+                    robot = context.teammates.get(pid) if context is not None else None
+                    if robot is not None and robot.pose is not None:
+                        slot = self._kit.config.ready_slot_for_player(pid)
+                        players.append({
+                            "id": pid, "slot": slot.value,
+                            "x": round(robot.pose.x, 2), "y": round(robot.pose.y, 2),
+                        })
+                        parts.append(
+                            f"p{pid}:({robot.pose.x:.2f},{robot.pose.y:.2f})"
+                        )
+                logger.info(
+                    "opponent kickoff transition phase=3 " + " ".join(parts),
+                    event="opponent_kickoff_transition",
+                    phase=3,
+                    ball_x=round(ball.x, 3),
+                    ball_y=round(ball.y, 3),
+                    players=players,
+                )
             return py_trees.common.Status.SUCCESS
 
         # Phase 3 → 0: our player touched ball or 5 s timeout
@@ -304,6 +327,19 @@ class PlayKickoffController(py_trees.behaviour.Behaviour):
                 phase_entered = self.blackboard.read(BlackboardKeys.KICKOFF_PHASE_ENTERED_AT)
                 if phase_entered is not None and now - phase_entered > 5.0:
                     self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 0)
+                    logger = self._kit.logger
+                    if logger is not None and ball is not None:
+                        logger.info(
+                            f"opponent kickoff transition phase=0 reason=timeout "
+                            f"duration={now - phase_entered:.2f}s "
+                            f"ball=({ball.x:.3f},{ball.y:.3f})",
+                            event="opponent_kickoff_transition",
+                            phase=0,
+                            reason="timeout",
+                            duration_sec=round(now - phase_entered, 2),
+                            ball_x=round(ball.x, 3),
+                            ball_y=round(ball.y, 3),
+                        )
                     return py_trees.common.Status.SUCCESS
 
                 if ball is not None:
@@ -313,6 +349,20 @@ class PlayKickoffController(py_trees.behaviour.Behaviour):
                             dist = math.hypot(robot.pose.x - ball.x, robot.pose.y - ball.y)
                             if dist < 0.3:
                                 self.blackboard.write(BlackboardKeys.KICKOFF_PHASE, 0)
+                                logger = self._kit.logger
+                                if logger is not None:
+                                    logger.info(
+                                        f"opponent kickoff transition phase=0 "
+                                        f"reason=player_{pid}_touched "
+                                        f"duration={now - phase_entered:.2f}s "
+                                        f"ball=({ball.x:.3f},{ball.y:.3f})",
+                                        event="opponent_kickoff_transition",
+                                        phase=0,
+                                        reason=f"player_{pid}_touched",
+                                        duration_sec=round(now - phase_entered, 2),
+                                        ball_x=round(ball.x, 3),
+                                        ball_y=round(ball.y, 3),
+                                    )
                                 return py_trees.common.Status.SUCCESS
 
             return py_trees.common.Status.SUCCESS

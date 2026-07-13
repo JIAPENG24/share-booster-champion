@@ -99,7 +99,7 @@ class ReadyStance:
     _SCENARIO_POSITIONS: dict[tuple[bool, int], dict[ReadySlot, Pose2D]] = {
         (True, 3): {
             ReadySlot.CENTER: Pose2D(-0.75, -0.75, 0.785),
-            ReadySlot.SIDE:   Pose2D(-1.5, 1.35, 0.0),
+            ReadySlot.SIDE:   Pose2D(-2.20, 1.35, 0.0),
             ReadySlot.KEEPER: Pose2D(-6.5, 0.0, 0.0),
         },
         (True, 2): {
@@ -178,7 +178,7 @@ class ReadyStance:
     def goalkeeper_guard_target(self, ball: BallState | None) -> Pose2D:
         """Goalkeeper guard formula; blends between goal-line deep and arc positioning."""
         GK = self.field.own_goal_x()
-        goal_line_x = GK + 0.50
+        goal_line_x = GK + self.config.strategy.goalkeeper_guard_depth_m
         if ball is None:
             return Pose2D(goal_line_x, 0.0, self.field.attack_theta())
 

@@ -67,6 +67,7 @@ class RobotClient:
     """
 
     _GET_UP_RETRY_INTERVAL_SEC = 1.0
+    _WALK_MODE_RETRY_INTERVAL_SEC = 1.0
 
     def __init__(
         self,
@@ -91,6 +92,10 @@ class RobotClient:
 
         # Get-up retry throttle
         self._last_get_up_at = 0.0
+        # Walk-mode recovery throttle: prevents 30 Hz set_mode storms when the
+        # SDK keeps rejecting the mode switch (e.g. recurring code 501 while
+        # the robot is fallen / in get-up motion).
+        self._last_walk_mode_at = 0.0
 
         # Kick state machine
         self._kick_enabled = False
@@ -228,6 +233,11 @@ class RobotClient:
 
     def ensure_walk_mode(self, reason: str) -> None:
         """Switch to walk gait and walk mode; the next tick polls mode again to confirm."""
+
+        now = time.monotonic()
+        if now - self._last_walk_mode_at < self._WALK_MODE_RETRY_INTERVAL_SEC:
+            return
+        self._last_walk_mode_at = now
 
         previous = self._cached_status
         self._logger.info(
@@ -488,6 +498,13 @@ class RobotClient:
         move: MoveIntent,
         reason: str,
     ) -> None:
+        # Skip velocity dispatch when the robot is not in walk mode (e.g.
+        # fallen, damping, prepare).  set_velocity would fail with code 400
+        # anyway, producing a 30 Hz log storm during fall recovery.
+        mode = self._cached_status.mode
+        if mode is not None and mode != "walk":
+            return
+
         try:
             self._set_velocity(vx=move.vx, vy=move.vy, vyaw=move.vyaw)
         except Exception as exc:

@@ -47,7 +47,7 @@ _TURN_THRESHOLD = 0.5
 _ANGULAR_SPEED_FLOOR = 0.25  # Lower floor to reduce overshoot for small angle errors.
 _ANGULAR_DEAD_ZONE = 0.15  # No floor below this angle error; pure proportional control.
 _LINEAR_SPEED_FLOOR = 0.3
-_LINEAR_GAIN = 0.9
+_LINEAR_GAIN = 1.2
 
 
 class MotionController:
