@@ -160,8 +160,10 @@ class SoccerStrategyTuning:
     gk_state_confirm_frames: int = 3  #  Consecutive frames to confirm a state entry transition.
     gk_state_release_frames: int = 5  #  Consecutive frames to confirm a state exit transition.
     gk_target_smooth_speed: float = 2.0  #  Max target position change rate for trajectory smoothing (m/s).
-    gk_rush_out_margin_m: float = 0.5  #  Extra depth margin for RUSH_OUT trigger to prevent boundary oscillation (m).
-    gk_desperation_clear_margin_m: float = 0.5  #  Ball-to-goal-line distance below which GK uses desperation clear (m).
+    gk_rush_out_margin_m: float = 0.8  #  Entry margin for RUSH_OUT: predicted rest_x must be this deep inside area (m).
+    gk_rush_out_exit_margin_m: float = 0.3  #  Exit margin for RUSH_OUT: rest_x must be this close to area boundary to exit (m).
+    gk_lateral_hold_min_sec: float = 0.8  #  Minimum time in LATERAL state before allowing transition away (s).
+    gk_desperation_clear_margin_m: float = 1.0  #  Ball-to-goal-line distance below which GK uses desperation clear (m).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

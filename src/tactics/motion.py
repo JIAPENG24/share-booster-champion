@@ -47,7 +47,7 @@ _TURN_THRESHOLD = 0.5
 _ANGULAR_SPEED_FLOOR = 0.25  # Lower floor to reduce overshoot for small angle errors.
 _ANGULAR_DEAD_ZONE = 0.15  # No floor below this angle error; pure proportional control.
 _LINEAR_SPEED_FLOOR = 0.3
-_LINEAR_GAIN = 1.2
+_LINEAR_GAIN = 2.0
 
 
 class MotionController:
@@ -339,8 +339,13 @@ class MotionController:
         # Arrival check
         if distance < arrive_distance and abs(final_theta_error) < _ARRIVE_ANGLE:
             if abs(hold_vyaw) > 1e-6:
+                # Active angular tracking toward target.theta instead of constant vyaw.
+                # Keeps the robot precisely facing the ball (or target heading) while
+                # holding position, smoothly correcting as the ball moves.
                 return RobotCommand(
-                    intent=MoveIntent(vyaw=hold_vyaw),
+                    intent=MoveIntent(
+                        vyaw=self._angular_velocity(final_theta_error),
+                    ),
                     reason=f"{reason}: active hold",
                 )
             return RobotCommand.stop(f"{reason}: arrived")

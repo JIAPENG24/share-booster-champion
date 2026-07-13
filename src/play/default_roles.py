@@ -294,6 +294,7 @@ class GoalkeeperRole(RoleStrategy):
         self._state_confirm = 0
         self._last_update_time: float = -1.0
         self._last_game_state: object = None
+        self._lateral_entry_time: float = 0.0
         # Logging
         self._state_logged = False
         self._last_kick_dir_index = -1
@@ -362,8 +363,12 @@ class GoalkeeperRole(RoleStrategy):
 
         # RUSH_OUT: ball predicted to stop inside defensive area (with margin
         # to prevent oscillation when rest_point is near the area boundary).
+        # Use a larger exit margin when already in RUSH_OUT to add hysteresis.
         rest_x, rest_y = self._predictor.predict_rest_point()
-        rush_margin = strat.gk_rush_out_margin_m
+        if self._gk_state == self._RUSH_OUT:
+            rush_margin = strat.gk_rush_out_exit_margin_m
+        else:
+            rush_margin = strat.gk_rush_out_margin_m
         rush_cond = rest_x < area_x - rush_margin and abs(rest_y) <= area_y
 
         # LATERAL: ball predicted to cross goal line within posts
@@ -379,6 +384,13 @@ class GoalkeeperRole(RoleStrategy):
             desired = self._RUSH_OUT
         else:
             desired = self._GUARD
+
+        # LATERAL hold: prevent oscillation by requiring a minimum dwell time
+        # before leaving LATERAL state.
+        if self._gk_state == self._LATERAL and desired != self._LATERAL:
+            elapsed = ball.last_seen_at - self._lateral_entry_time
+            if elapsed < strat.gk_lateral_hold_min_sec:
+                return
 
         # --- Debounce ---
         if desired == self._gk_state:
@@ -420,6 +432,9 @@ class GoalkeeperRole(RoleStrategy):
         self._state_confirm = 0
         self._pending_state = new_state
         self._state_logged = False
+        # Record entry timestamp for LATERAL hold time
+        if new_state == self._LATERAL:
+            self._lateral_entry_time = ball.last_seen_at
         # Reset kick direction lock on every transition
         self._last_kick_dir_index = -1
 
@@ -451,6 +466,22 @@ class GoalkeeperRole(RoleStrategy):
         self._ensure_updated(kit, context)
         ball = context.known_ball
 
+        # Desperation: ball critically close to goal line — approach ball
+        # directly, bypassing state machine target (which may be lateral
+        # block or guard and would prevent reaching the ball).
+        margin = kit.config.strategy.gk_desperation_clear_margin_m
+        own_goal_x = kit.field.own_goal_x()
+        if ball.x < own_goal_x + margin:
+            raw = kit.motion.approach_target(ball, 0.0, 0.2)
+            logger = kit.logger
+            if logger is not None:
+                logger.info(
+                    f"GK desperation approach ball=({ball.x:.3f},{ball.y:.3f})",
+                    event="goalkeeper_desperation_approach",
+                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                )
+            return self._smooth_target(raw, kit)
+
         if self._gk_state == self._RUSH_OUT:
             raw = self._rush_out_target(kit, context, ball)
         elif self._gk_state == self._LATERAL:
@@ -466,6 +497,13 @@ class GoalkeeperRole(RoleStrategy):
         context: PlayContext,
     ) -> bool:
         self._ensure_updated(kit, context)
+        # Force kick when ball is critically close to own goal line,
+        # regardless of state machine state (prevents LATERAL oscillation
+        # from blocking the desperation clear).
+        ball = context.known_ball
+        margin = kit.config.strategy.gk_desperation_clear_margin_m
+        if ball is not None and ball.x < kit.field.own_goal_x() + margin:
+            return True
         return self._gk_state == self._RUSH_OUT
 
     def kick_target(

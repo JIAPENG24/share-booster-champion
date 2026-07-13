@@ -99,7 +99,7 @@ class ReadyStance:
     _SCENARIO_POSITIONS: dict[tuple[bool, int], dict[ReadySlot, Pose2D]] = {
         (True, 3): {
             ReadySlot.CENTER: Pose2D(-0.75, -0.75, 0.785),
-            ReadySlot.SIDE:   Pose2D(-2.20, 1.35, 0.0),
+            ReadySlot.SIDE:   Pose2D(-2.25, 1.35, 0.0),
             ReadySlot.KEEPER: Pose2D(-6.5, 0.0, 0.0),
         },
         (True, 2): {
