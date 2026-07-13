@@ -27,13 +27,16 @@ if TYPE_CHECKING:
 # ----------------------------------------------------------------------
 
 # Approach alignment distance behind the ball while chasing, in meters.
-_CHASER_APPROACH_OFFSET = 0.4
+_CHASER_APPROACH_OFFSET = 0.22
 
 
 class ChaserRole(RoleStrategy):
     """Default chaser; kick target is split by ReadySlot into center shot or side clearance."""
 
     name = "chaser"
+
+    def __init__(self) -> None:
+        self._last_decision: str | None = None
 
     def target(
         self,
@@ -58,16 +61,48 @@ class ChaserRole(RoleStrategy):
     ) -> Pose2D:
         slot = kit.config.ready_slot_for_player(player_id)
         if slot == ReadySlot.SIDE:
-            return kit.targeting.select_clear_or_pass_target(
+            target, decision = kit.targeting.select_clear_or_pass_target(
                 player_id,
                 context,
                 kit.is_player_allowed,
             )
-        return kit.targeting.select_kick_target(
-            player_id,
-            context,
-            kit.is_player_allowed,
-        )
+        else:
+            target, decision = kit.targeting.select_kick_target(
+                player_id,
+                context,
+                kit.is_player_allowed,
+                was_shooting=self._last_decision == "shoot",
+            )
+
+        if decision != self._last_decision:
+            self._last_decision = decision
+            logger = kit.logger
+            if logger is not None:
+                extra: dict[str, object] = {}
+                msg = (
+                    f"chaser kick decision={decision} "
+                    f"ball=({context.known_ball.x:.3f},{context.known_ball.y:.3f}) "
+                    f"target=({target.x:.3f},{target.y:.3f}) "
+                    f"player={player_id} slot={slot.value}"
+                )
+                if slot == ReadySlot.CENTER and decision in ("shoot", "dribble"):
+                    lane_score = kit.targeting.shot_lane_score(context)
+                    extra["shot_lane_score"] = round(lane_score, 3)
+                    msg += f" lane_score={lane_score:.3f}"
+                logger.info(
+                    msg,
+                    event="chaser_kick_decision",
+                    player_id=player_id,
+                    slot=slot.value,
+                    decision=decision,
+                    ball_x=round(context.known_ball.x, 3),
+                    ball_y=round(context.known_ball.y, 3),
+                    target_x=round(target.x, 3),
+                    target_y=round(target.y, 3),
+                    **extra,
+                )
+
+        return target
 
     def _approach_reason(self, kit: "SoccerKit", player_id: int) -> str:
         slot = kit.config.ready_slot_for_player(player_id)
@@ -80,7 +115,8 @@ class ChaserRole(RoleStrategy):
         target: Pose2D,
     ) -> str:
         slot = kit.config.ready_slot_for_player(player_id)
-        default = "side clear" if slot == ReadySlot.SIDE else "center kick"
+        decision = self._last_decision or "unknown"
+        default = f"chaser kick decision={decision}"
         return kit.targeting.kick_reason(target, default=default)
 
     def build_subtree(
@@ -104,7 +140,7 @@ class ChaserRole(RoleStrategy):
                     player_id,
                     target,
                 ),
-                speed_multiplier=1.3,
+                speed_multiplier=1.5,
             ),
         )
 
@@ -119,17 +155,42 @@ class SupporterRole(RoleStrategy):
 
     name = "supporter"
 
+    def __init__(self) -> None:
+        self._was_pushed: bool = False
+        self._pushout_logged: bool = False
+
     def target(
         self,
         kit: "SoccerKit",
         player_id: int,
         context: PlayContext,
     ) -> Pose2D:
-        return kit.targeting.support_target(
+        target, was_pushed = kit.targeting.support_target(
             player_id,
             context,
             kit.is_player_allowed,
         )
+
+        if was_pushed != self._was_pushed:
+            self._was_pushed = was_pushed
+            if was_pushed:
+                self._pushout_logged = False
+            logger = kit.logger
+            if logger is not None and was_pushed and not self._pushout_logged:
+                self._pushout_logged = True
+                logger.info(
+                    f"supporter pushout player={player_id} "
+                    f"target=({target.x:.3f},{target.y:.3f}) "
+                    f"ball=({context.known_ball.x:.3f},{context.known_ball.y:.3f})",
+                    event="supporter_pushout",
+                    player_id=player_id,
+                    target_x=round(target.x, 3),
+                    target_y=round(target.y, 3),
+                    ball_x=round(context.known_ball.x, 3),
+                    ball_y=round(context.known_ball.y, 3),
+                )
+
+        return target
 
     def build_subtree(
         self,

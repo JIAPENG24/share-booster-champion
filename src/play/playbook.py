@@ -155,6 +155,7 @@ class DefaultPlaybook(Playbook):
         self.register_role(SupporterRole())
         self.register_role(GoalkeeperRole())
         self._keeper_could_challenge = False
+        self._last_chaser_id: int | None = None
 
     def assign_roles(self, context: PlayContext) -> RoleAssignment:
         chaser_id = self.select_chaser(context)
@@ -207,19 +208,40 @@ class DefaultPlaybook(Playbook):
             )
 
         if not candidates:
-            return min(config.player_ids)
-        if not scored:
-            return min(candidates)
+            chaser_id = min(config.player_ids)
+        elif not scored:
+            chaser_id = min(candidates)
+        else:
+            tie_margin = config.strategy.teammate_challenge_tie_margin_m
+            ranked = sorted(scored, key=lambda item: item[0])
+            best_score = ranked[0][0]
+            tied_ids = [
+                player_id for score, player_id in ranked if score <= best_score + tie_margin
+            ]
+            chaser_id = min(tied_ids)
 
-        tie_margin = config.strategy.teammate_challenge_tie_margin_m
-        # Sort by score ascending; lower is better, and scores within tie_margin are tied.
-        # Ties choose the smallest player ID for predictable debugging.
-        ranked = sorted(scored, key=lambda item: item[0])
-        best_score = ranked[0][0]
-        tied_ids = [
-            player_id for score, player_id in ranked if score <= best_score + tie_margin
-        ]
-        return min(tied_ids)
+        if chaser_id != self._last_chaser_id:
+            self._last_chaser_id = chaser_id
+            logger = self.kit.logger
+            if logger is not None:
+                candidate_info = {}
+                for score, pid in scored:
+                    candidate_info[str(pid)] = {
+                        "score": round(score, 3),
+                        "slot": config.ready_slot_for_player(pid).value,
+                    }
+                logger.info(
+                    f"chaser selected player={chaser_id} "
+                    f"ball=({ball.x:.3f},{ball.y:.3f}) "
+                    f"candidates={len(candidate_info)}",
+                    event="chaser_selected",
+                    chaser_id=chaser_id,
+                    ball_x=round(ball.x, 3),
+                    ball_y=round(ball.y, 3),
+                    candidates=candidate_info,
+                )
+
+        return chaser_id
 
     def _slot_can_challenge(
         self,

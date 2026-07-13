@@ -126,10 +126,13 @@ class Targeting:
         player_id: int,
         context: PlayContext,
         is_player_allowed: PlayerAllowed,
-    ) -> Pose2D:
+        *,
+        was_shooting: bool = False,
+    ) -> tuple[Pose2D, str]:
         return attack.select_kick_target(
             self.config, self.field, self.obstacles,
             player_id, context, is_player_allowed,
+            was_shooting=was_shooting,
         )
 
     def select_clear_or_pass_target(
@@ -137,7 +140,7 @@ class Targeting:
         player_id: int,
         context: PlayContext,
         is_player_allowed: PlayerAllowed,
-    ) -> Pose2D:
+    ) -> tuple[Pose2D, str]:
         return attack.select_clear_or_pass_target(
             self.config, self.field, self.obstacles,
             player_id, context, is_player_allowed,
@@ -163,6 +166,17 @@ class Targeting:
     ) -> bool:
         return attack.shot_lane_is_clear(
             self.config, self.field, self.obstacles, context,
+        )
+
+    def shot_lane_score(
+        self,
+        context: PlayContext,
+    ) -> float:
+        ball = context.known_ball
+        return attack.lane_clear_score(
+            self.config, ball.x, ball.y,
+            self.field.opponent_goal_x(), 0.0,
+            self.obstacles.opponent_obstacles(context),
         )
 
     def lane_clear_score(
@@ -194,7 +208,7 @@ class Targeting:
         player_id: int,
         context: PlayContext,
         is_player_allowed: PlayerAllowed,
-    ) -> Pose2D:
+    ) -> tuple[Pose2D, bool]:
         return support.support_target(
             self.config, self.field, player_id, context,
             is_player_allowed,

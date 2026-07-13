@@ -142,4 +142,4 @@ def side_should_challenge(
         return False
     center_dist = math.hypot(ball.x - center.x, ball.y - center.y)
     side_dist = math.hypot(ball.x - side.x, ball.y - side.y)
-    return side_dist + 0.35 < center_dist
+    return side_dist + 0.40 < center_dist

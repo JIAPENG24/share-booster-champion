@@ -75,11 +75,11 @@ class SoccerStrategyTuning:
     # Kick hysteresis
     # Use enter/exit thresholds plus delay to prevent flapping around distance boundaries.
     soccer_kick_enter_distance: float = 1.5  #  Enter kick mode when distance to ball is below enter.
-    soccer_kick_exit_distance: float = 2.0  #  Exit kick mode when distance to ball is above exit; must exceed enter.
+    soccer_kick_exit_distance: float = 1.5  #  Exit kick mode when distance to ball is above exit; must exceed enter.
     soccer_kick_power: float = 1.5  #  Kick power.
     kickoff_kick_power: float = 1.0  #  Our-kickoff-specific kick power.
-    soccer_kick_min_active_sec: float = 1.0  #  Minimum active kick duration to avoid instant switching.
-    soccer_kick_exit_delay_sec: float = 1.5  #  Delay after exit condition before actually leaving kick mode.
+    soccer_kick_min_active_sec: float = 0.7  #  Minimum active kick duration to avoid instant switching.
+    soccer_kick_exit_delay_sec: float = 1.2  #  Delay after exit condition before actually leaving kick mode.
 
     # Set plays and restarts
     restart_touch_distance: float = 0.45  #  Distance threshold for "touched the ball".
@@ -123,7 +123,7 @@ class SoccerStrategyTuning:
 
     # Passing
     pass_enabled: bool = True  #  Master pass switch.
-    pass_min_score: float = 0.52  #  Minimum pass-candidate score; below this, dribble instead.
+    pass_min_score: float = 0.60  #  Minimum pass-candidate score; below this, dribble instead.
     pass_min_forward_m: float = 0.35  #  Minimum forward progress for passes; discourages lateral/back passes.
     pass_lane_clearance: float = 0.75  #  Required clearance around the pass lane to avoid interception.
 

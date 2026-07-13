@@ -56,16 +56,22 @@ def select_kick_target(
     player_id: int,
     context: PlayContext,
     is_player_allowed: PlayerAllowed,
-) -> Pose2D:
+    *,
+    was_shooting: bool = False,
+) -> tuple[Pose2D, str]:
     """Decide this tick's aim target for a center chaser.
 
-    Decision order: sideline recovery, restart touch, best pass, clear shot lane,
-    and finally dribble forward.
+    Decision order: sideline recovery, restart touch, clear shot lane, best pass,
+    and finally dribble forward.  Shot lane uses hysteresis via ``was_shooting``
+    to prevent rapid shoot/dribble oscillation.
+
+    Returns (target, decision) where decision is one of:
+    ``"sideline"``, ``"restart"``, ``"shoot"``, ``"pass"``, ``"dribble"``.
     """
 
     ball = context.known_ball
     if ball_near_sideline(config, ball):
-        return recovery.sideline_recovery_target(config, field, ball)
+        return recovery.sideline_recovery_target(config, field, ball), "sideline"
 
     game = context.known_game
     if should_make_restart_touch(config, game):
@@ -74,19 +80,19 @@ def select_kick_target(
             player_id, context, is_player_allowed,
         )
         if teammate is not None:
-            return Pose2D(teammate.x, teammate.y, 0.0)
-        return dribble_target(config, field, ball)
+            return Pose2D(teammate.x, teammate.y, 0.0), "restart"
+        return dribble_target(config, field, ball), "dribble"
+
+    if shot_lane_is_clear(config, field, obstacles, context, was_shooting=was_shooting):
+        return Pose2D(field.opponent_goal_x(), 0.0, 0.0), "shoot"
 
     teammate = best_pass_target(
         config, obstacles,
         player_id, context, is_player_allowed,
     )
     if teammate is not None:
-        return Pose2D(teammate.x, teammate.y, 0.0)
-
-    if shot_lane_is_clear(config, field, obstacles, context):
-        return Pose2D(field.opponent_goal_x(), 0.0, 0.0)
-    return dribble_target(config, field, ball)
+        return Pose2D(teammate.x, teammate.y, 0.0), "pass"
+    return dribble_target(config, field, ball), "dribble"
 
 
 def select_clear_or_pass_target(
@@ -96,23 +102,26 @@ def select_clear_or_pass_target(
     player_id: int,
     context: PlayContext,
     is_player_allowed: PlayerAllowed,
-) -> Pose2D:
+) -> tuple[Pose2D, str]:
     """Side-lane view: pass if possible, otherwise clear toward the opponent goal without shooting or dribbling.
 
     Side chasers prefer clearing toward the middle rather than dribbling along the sideline into pressure.
+
+    Returns (target, decision) where decision is one of:
+    ``"sideline"``, ``"pass"``, ``"clear"``.
     """
 
     ball = context.known_ball
     if ball_near_sideline(config, ball):
-        return recovery.sideline_recovery_target(config, field, ball)
+        return recovery.sideline_recovery_target(config, field, ball), "sideline"
 
     teammate = best_pass_target(
         config, obstacles,
         player_id, context, is_player_allowed,
     )
     if teammate is not None:
-        return Pose2D(teammate.x, teammate.y, 0.0)
-    return Pose2D(field.opponent_goal_x(), 0.0, 0.0)
+        return Pose2D(teammate.x, teammate.y, 0.0), "pass"
+    return Pose2D(field.opponent_goal_x(), 0.0, 0.0), "clear"
 
 
 # Restart touch
@@ -192,18 +201,26 @@ def shot_lane_is_clear(
     field: TeamFieldFrame,
     obstacles: ObstacleCollector,
     context: PlayContext,
+    *,
+    was_shooting: bool = False,
 ) -> bool:
-    """Treat a shot lane as directly shootable when clearance score is at least 0.55."""
+    """Treat a shot lane as shootable with hysteresis to prevent oscillation.
+
+    When not already shooting, lane_clear_score >= 0.55 is required to enter.
+    When already shooting, lane_clear_score >= 0.35 is sufficient to stay.
+    """
 
     ball = context.known_ball
-    return lane_clear_score(
+    score = lane_clear_score(
         config,
         ball.x,
         ball.y,
         field.opponent_goal_x(),
         0.0,
         obstacles.opponent_obstacles(context),
-    ) >= 0.55
+    )
+    threshold = 0.35 if was_shooting else 0.55
+    return score >= threshold
 
 
 def lane_clear_score(

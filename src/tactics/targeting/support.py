@@ -28,11 +28,13 @@ def support_target(
     player_id: int,
     context: PlayContext,
     is_player_allowed: PlayerAllowed,
-) -> Pose2D:
+) -> tuple[Pose2D, bool]:
     """Compute this tick's supporter target Pose2D.
 
     Stay behind the ball by ``support_depth_m`` and laterally split by player_id parity, clamped to our half.
     Pushout: use :func:`_spaced_support_target` to avoid overlapping other supporters.
+
+    Returns (target, was_pushed).
     """
 
     side = 1.0 if player_id % 2 == 0 else -1.0
@@ -68,7 +70,7 @@ def _spaced_support_target(
     context: PlayContext,
     target: Pose2D,
     is_player_allowed: PlayerAllowed,
-) -> Pose2D:
+) -> tuple[Pose2D, bool]:
     """If target is closer than min_spacing to the nearest teammate, push it along "teammate -> target" out to ``min_spacing``.
 
     Steps:
@@ -84,11 +86,13 @@ def _spaced_support_target(
     In extreme corners with teammate pressure, clamping can make the final target
     slightly closer than min_spacing. With at most three teammates this is rare; if
     strict final distance is needed, iterate once more after clamping.
+
+    Returns (adjusted_target, was_pushed).
     """
 
     min_spacing = config.strategy.support_min_spacing_m
     if min_spacing <= 0.0:
-        return target
+        return target, False
 
     ball = context.known_ball
     game = context.known_game
@@ -100,7 +104,7 @@ def _spaced_support_target(
         and is_player_allowed(game, teammate_id)
     )
     if not teammate_poses:
-        return target
+        return target, False
 
     closest = min(
         teammate_poses,
@@ -110,10 +114,9 @@ def _spaced_support_target(
     dy = target.y - closest.y
     distance = math.hypot(dx, dy)
     if distance >= min_spacing:
-        return target
+        return target, False
 
     if distance <= 1e-6:
-        # Target overlaps the nearest teammate; use the original lane_sign fallback direction.
         lane_sign = 1.0 if target.y >= ball.y else -1.0
         if abs(target.y - ball.y) < 1e-6:
             lane_sign = 1.0 if player_id % 2 == 0 else -1.0
@@ -132,4 +135,4 @@ def _spaced_support_target(
         pushed.x,
         pushed.y,
         field.face_ball_theta(pushed.x, pushed.y, ball),
-    )
+    ), True
