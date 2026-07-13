@@ -7,7 +7,7 @@ held by :class:`SoccerKit`.
 
 from __future__ import annotations
 
-from typing import Any
+import math
 
 from ..soccer_framework import (
     BallState,
@@ -17,7 +17,7 @@ from ..soccer_framework import (
     SetPlay,
     SoccerConfig,
 )
-from .geometry import TeamFieldFrame, clamp
+from .geometry import TeamFieldFrame, clamp, lerp, smoothstep
 
 
 class ReadyStance:
@@ -175,25 +175,30 @@ class ReadyStance:
 
         return result
 
-    def goalkeeper_guard_target(
-        self,
-        ball: BallState | None,
-        logger: Any = None,
-    ) -> Pose2D:
-        """Goalkeeper guard formula; the default goalkeeper role calls this."""
-        keeper_x = self.field.own_goal_x() + 0.50
-        raw_y = (ball.y * 0.38) if ball else 0.0
-        keeper_y = clamp(raw_y, -1.35, 1.35)
+    def goalkeeper_guard_target(self, ball: BallState | None) -> Pose2D:
+        """Goalkeeper guard formula; blends between goal-line deep and arc positioning."""
+        GK = self.field.own_goal_x()
+        goal_line_x = GK + 0.50
+        if ball is None:
+            return Pose2D(goal_line_x, 0.0, self.field.attack_theta())
+
+        R = self.config.strategy.goalkeeper_guard_arc_radius
+
+        # Step 1 — arc intersection: ball-to-goal-center line ∩ circle(GK, R)
+        dx = ball.x - GK
+        dy = ball.y
+        dist = math.hypot(dx, dy)
+        t = min(R / max(dist, 0.01), 1.0)
+        arc_x = GK + t * dx
+        arc_y = t * dy
+
+        # Step 2 — blend between goal line and arc based on lateral offset
+        blend = smoothstep(0.7, 1.3, abs(arc_y))
+        keeper_x = lerp(goal_line_x, arc_x, blend)
+        keeper_y = clamp(arc_y, -1.35, 1.35)
+
         theta = self.field.face_ball_theta(keeper_x, keeper_y, ball)
-        if logger is not None and self.config.debug.debug_console:
-            logger.debug(
-                f"GK guard: target=({keeper_x:.3f},{keeper_y:.3f}) "
-                f"ball.y={ball.y if ball else 0:.3f} raw_y={raw_y:.3f} clamped={keeper_y:.3f}",
-                event="goalkeeper_guard_formula",
-                keeper_x=round(keeper_x, 3), keeper_y=round(keeper_y, 3),
-                ball_y=round(ball.y, 3) if ball else 0,
-                raw_y=round(raw_y, 3), clamped=round(keeper_y, 3),
-            )
+
         return Pose2D(keeper_x, keeper_y, theta)
 
     def _own_set_play_ready_target(

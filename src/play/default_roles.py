@@ -9,7 +9,6 @@ base-class contracts.
 from __future__ import annotations
 
 import math
-import time
 from typing import TYPE_CHECKING
 
 import py_trees
@@ -205,8 +204,8 @@ class GoalkeeperRole(RoleStrategy):
         self._smooth_vx = 0.0
         self._smooth_vy = 0.0
         self._clear_plan_logged = False
+        self._guard_logged = False
         self._last_kick_dir_index = -1
-        self._kick_dir_commit_time = 0.0
 
     def target(
         self,
@@ -255,6 +254,8 @@ class GoalkeeperRole(RoleStrategy):
                 kick_theta,
                 self._APPROACH_OFFSET,
             )
+            if logger is not None:
+                self._guard_logged = False
             if logger is not None and not self._clear_plan_logged:
                 dir_name = (
                     "center" if abs(kt.y) < 1.0
@@ -275,25 +276,16 @@ class GoalkeeperRole(RoleStrategy):
                 )
                 self._clear_plan_logged = True
         else:
-            target = kit.ready_stance.goalkeeper_guard_target(ball, logger=kit.logger)
-
-        if logger is not None and kit.config.debug.debug_console:
-            mode = "CLEAR" if wants else "GUARD"
-            dist = math.hypot(ball.x - target.x, ball.y - target.y)
-            logger.debug(
-                f"GK target: mode={mode} "
-                f"ball=({ball.x:.3f},{ball.y:.3f},v={self._smooth_vx:.3f},{self._smooth_vy:.3f}) "
-                f"pred=({pred_x:.3f},{pred_y:.3f}) "
-                f"target=({target.x:.3f},{target.y:.3f}) "
-                f"dist={dist:.3f}",
-                event="goalkeeper_target",
-                mode=mode,
-                ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
-                ball_vx=round(self._smooth_vx, 3), ball_vy=round(self._smooth_vy, 3),
-                pred_x=round(pred_x, 3), pred_y=round(pred_y, 3),
-                target_x=round(target.x, 3), target_y=round(target.y, 3),
-                dist=round(dist, 3),
-            )
+            target = kit.ready_stance.goalkeeper_guard_target(ball)
+            if logger is not None and not self._guard_logged:
+                logger.info(
+                    f"GK guard: target=({target.x:.3f},{target.y:.3f}) "
+                    f"ball=({ball.x:.3f},{ball.y:.3f})",
+                    event="goalkeeper_guard_active",
+                    target_x=round(target.x, 3), target_y=round(target.y, 3),
+                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                )
+                self._guard_logged = True
 
         return target
 
@@ -317,6 +309,7 @@ class GoalkeeperRole(RoleStrategy):
             self._was_in_defensive_area = in_area
             if in_area:
                 self._clear_plan_logged = False
+                self._last_kick_dir_index = -1
             logger = kit.logger
             if logger is not None:
                 direction = "guard→clear" if in_area else "clear→guard"
@@ -340,50 +333,43 @@ class GoalkeeperRole(RoleStrategy):
         ball_speed = math.hypot(self._smooth_vx, self._smooth_vy)
         own_goal_x = kit.field.own_goal_x()
         if ball.x < own_goal_x + 0.8 and ball_speed < 0.3:
-            return Pose2D(ball.x + 5.0, 0.0, kit.field.attack_theta())
+            return Pose2D(6.30, 0.0, kit.field.attack_theta())
 
         keeper_id = kit.config.goalkeeper_player_id()
         robot = context.teammates.get(keeper_id)
         if robot is None or robot.pose is None:
-            return Pose2D(ball.x + 5.0, 0.0, kit.field.attack_theta())
+            return Pose2D(6.30, 0.0, kit.field.attack_theta())
 
-        half_w = kit.config.field_width / 2.0
+        goal_w = kit.config.goal_width
         candidates = [
-            (ball.x + 5.0, 0.0),                         # forward center
-            (ball.x + 3.0, half_w - 0.5),                # forward top side
-            (ball.x + 3.0, -(half_w - 0.5)),              # forward bottom side
+            (6.30, 0.0),                         # opponent half center
+            (6.30, goal_w * 0.5),                # opponent goal top post
+            (6.30, -goal_w * 0.5),               # opponent goal bottom post
         ]
 
-        best_pos = candidates[0]
-        best_diff = float("inf")
-        best_index = 0
-        for i, (tx, ty) in enumerate(candidates):
-            theta = math.atan2(ty - ball.y, tx - ball.x)
-            diff = abs(normalize_angle(theta - robot.pose.theta))
-            if diff < best_diff:
-                best_diff = diff
-                best_pos = (tx, ty)
-                best_index = i
-
-        now = time.monotonic()
-        if best_index != self._last_kick_dir_index:
-            if now - self._kick_dir_commit_time >= 0.3:
-                self._last_kick_dir_index = best_index
-                self._kick_dir_commit_time = now
-                dir_name = ("center", "top", "bottom")[best_index]
-                logger = kit.logger
-                if logger is not None:
-                    logger.info(
-                        f"GK kick dir: {dir_name} "
-                        f"ball=({ball.x:.3f},{ball.y:.3f}) "
-                        f"robot_theta={robot.pose.theta:.2f}",
-                        event="goalkeeper_kick_direction",
-                        direction=dir_name,
-                        ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
-                        robot_theta=round(robot.pose.theta, 2),
-                    )
-        else:
-            self._kick_dir_commit_time = now
+        # Lock direction for the entire clear cycle
+        if self._last_kick_dir_index == -1:
+            best_index = 0
+            best_diff = float("inf")
+            for i, (tx, ty) in enumerate(candidates):
+                theta = math.atan2(ty - ball.y, tx - ball.x)
+                diff = abs(normalize_angle(theta - robot.pose.theta))
+                if diff < best_diff:
+                    best_diff = diff
+                    best_index = i
+            self._last_kick_dir_index = best_index
+            dir_name = ("center", "top", "bottom")[best_index]
+            logger = kit.logger
+            if logger is not None:
+                logger.info(
+                    f"GK kick dir: {dir_name} "
+                    f"ball=({ball.x:.3f},{ball.y:.3f}) "
+                    f"robot_theta={robot.pose.theta:.2f}",
+                    event="goalkeeper_kick_direction",
+                    direction=dir_name,
+                    ball_x=round(ball.x, 3), ball_y=round(ball.y, 3),
+                    robot_theta=round(robot.pose.theta, 2),
+                )
 
         return Pose2D(candidates[self._last_kick_dir_index][0],
                       candidates[self._last_kick_dir_index][1],

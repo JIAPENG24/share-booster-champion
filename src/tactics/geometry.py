@@ -14,8 +14,10 @@ from ..soccer_framework import BallState, Pose2D, SoccerConfig
 
 __all__ = [
     "clamp",
+    "lerp",
     "normalize_angle",
     "relative_to_field",
+    "smoothstep",
     "field_to_relative",
     "TeamFieldFrame",
 ]
@@ -23,6 +25,15 @@ __all__ = [
 
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+def lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * clamp(t, 0.0, 1.0)
+
+
+def smoothstep(edge0: float, edge1: float, x: float) -> float:
+    t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
 
 def normalize_angle(angle: float) -> float:

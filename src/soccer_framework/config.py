@@ -144,6 +144,7 @@ class SoccerStrategyTuning:
     goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
     goalkeeper_prediction_max_sec: float = 1.0  #  Max ball prediction horizon for goalkeeper clearance (s).
+    goalkeeper_guard_arc_radius: float = 1.4  #  Arc radius for guard positioning (m).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.
