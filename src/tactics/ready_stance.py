@@ -199,7 +199,8 @@ class ReadyStance:
 
         theta = self.field.face_ball_theta(keeper_x, keeper_y, ball)
 
-        return Pose2D(keeper_x, keeper_y, theta)
+        target = Pose2D(keeper_x, keeper_y, theta)
+        return self.field.clamp_from_goal_obstructions(target)
 
     def _own_set_play_ready_target(
         self,

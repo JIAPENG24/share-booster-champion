@@ -121,6 +121,24 @@ class TeamFieldFrame:
             theta=pose.theta,
         )
 
+    def clamp_from_goal_obstructions(self, pos: Pose2D) -> Pose2D:
+        """Push goalkeeper target out of net/post obstruction zones near own goal."""
+        x, y, theta = pos.x, pos.y, pos.theta
+
+        # Zone 1: behind net
+        if -7.8 <= x <= -7.15 and -1.5 <= y <= 1.5:
+            x = -7.15
+
+        # Zone 2: bottom post
+        if -7.4 <= x <= -7.0 and -1.5 <= y <= -0.85:
+            y = -0.85
+
+        # Zone 3: top post
+        if -7.4 <= x <= -7.0 and 0.85 <= y <= 1.5:
+            y = 0.85
+
+        return Pose2D(x, y, theta)
+
     def face_ball_theta(
         self,
         x: float,

@@ -254,6 +254,7 @@ class GoalkeeperRole(RoleStrategy):
                 kick_theta,
                 self._APPROACH_OFFSET,
             )
+            target = kit.field.clamp_from_goal_obstructions(target)
             if logger is not None:
                 self._guard_logged = False
             if logger is not None and not self._clear_plan_logged:

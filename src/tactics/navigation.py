@@ -130,12 +130,30 @@ class ObstacleCollector:
                 )
         return tuple(obstacles)
 
+    def keeper_goal_obstacles(self, player_id: int) -> tuple[Obstacle, ...]:
+        """Goal-frame safety obstacles for the goalkeeper to avoid net/posts."""
+        if player_id != self.config.goalkeeper_player_id():
+            return ()
+
+        obstacles: list[Obstacle] = []
+        r = 0.30
+
+        # Zone 1: behind net
+        for y in (-1.3, 0.0, 1.3):
+            obstacles.append(Obstacle(x=-7.5, y=y, radius=r))
+
+        # Zones 2 & 3: post-side areas
+        for sy in (-1.0, 1.0):
+            obstacles.append(Obstacle(x=-7.0, y=sy * 1.3, radius=r * 1.2))
+
+        return tuple(obstacles)
+
     def collect_all(
         self,
         player_id: int,
         context: PlayContext,
     ) -> tuple[Obstacle, ...]:
-        """Collect all obstacles for one avoidance check: opponents, teammates, and goal structure.
+        """Collect all obstacles for one avoidance check: opponents, teammates, goal structure, and keeper-specific zones.
 
         Freshness filtering is already done by :class:`UpdateRobotPoses`, which
         sets stale poses to None; this method only skips ``pose is None`` robots.
@@ -144,6 +162,7 @@ class ObstacleCollector:
             self.opponent_obstacles(context)
             + self.teammate_obstacles(player_id, context)
             + self.goal_structure_obstacles()
+            + self.keeper_goal_obstacles(player_id)
         )
 
 
