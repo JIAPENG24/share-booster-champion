@@ -193,7 +193,7 @@ class GoalkeeperRole(RoleStrategy):
     name = "goalkeeper"
 
     # Approach alignment distance for goalkeeper challenges, tighter than the chaser, in meters.
-    _APPROACH_OFFSET = 0.22
+    _APPROACH_OFFSET = 0.18
 
     def __init__(self):
         super().__init__()
@@ -236,7 +236,7 @@ class GoalkeeperRole(RoleStrategy):
         robot = context.teammates.get(keeper_id)
         if robot is not None and robot.pose is not None:
             dist = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
-            rush_speed = 0.7 * kit.config.strategy.goalkeeper_rush_speed_multiplier
+            rush_speed = kit.config.strategy.goalkeeper_rush_speed_ratio * kit.config.strategy.goalkeeper_rush_speed_multiplier
             travel_time = max(dist / rush_speed, 0.2)
             travel_time = min(travel_time, kit.config.strategy.goalkeeper_prediction_max_sec)
         else:
@@ -255,8 +255,6 @@ class GoalkeeperRole(RoleStrategy):
                 self._APPROACH_OFFSET,
             )
             target = kit.field.clamp_from_goal_obstructions(target)
-            if logger is not None:
-                self._guard_logged = False
             if logger is not None and not self._clear_plan_logged:
                 dir_name = (
                     "center" if abs(kt.y) < 1.0
@@ -310,6 +308,7 @@ class GoalkeeperRole(RoleStrategy):
             self._was_in_defensive_area = in_area
             if in_area:
                 self._clear_plan_logged = False
+                self._guard_logged = False
                 self._last_kick_dir_index = -1
             logger = kit.logger
             if logger is not None:

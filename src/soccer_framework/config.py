@@ -74,8 +74,8 @@ class SoccerStrategyTuning:
 
     # Kick hysteresis
     # Use enter/exit thresholds plus delay to prevent flapping around distance boundaries.
-    soccer_kick_enter_distance: float = 2.5  #  Enter kick mode when distance to ball is below enter.
-    soccer_kick_exit_distance: float = 3.0  #  Exit kick mode when distance to ball is above exit; must exceed enter.
+    soccer_kick_enter_distance: float = 1.5  #  Enter kick mode when distance to ball is below enter.
+    soccer_kick_exit_distance: float = 2.0  #  Exit kick mode when distance to ball is above exit; must exceed enter.
     soccer_kick_power: float = 1.5  #  Kick power.
     kickoff_kick_power: float = 1.0  #  Our-kickoff-specific kick power.
     soccer_kick_min_active_sec: float = 1.0  #  Minimum active kick duration to avoid instant switching.
@@ -143,8 +143,9 @@ class SoccerStrategyTuning:
     goalkeeper_rush_speed_multiplier: float = 1.8  #  Rush-out/retreat speed multiplier for goalkeeper.
     goalkeeper_kick_power: float = 3.0  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
-    goalkeeper_prediction_max_sec: float = 1.0  #  Max ball prediction horizon for goalkeeper clearance (s).
+    goalkeeper_prediction_max_sec: float = 1.5  #  Max ball prediction horizon for goalkeeper clearance (s).
     goalkeeper_guard_arc_radius: float = 1.4  #  Arc radius for guard positioning (m).
+    goalkeeper_rush_speed_ratio: float = 0.7  #  Rush-speed estimation ratio for prediction (×rush_speed_multiplier).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.

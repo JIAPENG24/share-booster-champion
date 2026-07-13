@@ -195,6 +195,7 @@ class ReadyStance:
         # Step 2 — blend between goal line and arc based on lateral offset
         blend = smoothstep(0.7, 1.3, abs(arc_y))
         keeper_x = lerp(goal_line_x, arc_x, blend)
+        keeper_x = max(keeper_x, goal_line_x)
         keeper_y = clamp(arc_y, -1.35, 1.35)
 
         theta = self.field.face_ball_theta(keeper_x, keeper_y, ball)
