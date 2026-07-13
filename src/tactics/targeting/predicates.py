@@ -133,6 +133,8 @@ def side_should_challenge(
 ) -> bool:
     """Whether the SIDE slot should challenge: always in midfield/own half, and in attack only when clearly closer than CENTER."""
 
+    if context.ball is None:
+        return False
     ball = context.known_ball
     if ball_is_in_midfield_or_own_half(config, ball):
         return True

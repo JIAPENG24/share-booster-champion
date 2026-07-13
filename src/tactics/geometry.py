@@ -124,18 +124,20 @@ class TeamFieldFrame:
     def clamp_from_goal_obstructions(self, pos: Pose2D) -> Pose2D:
         """Push goalkeeper target out of net/post obstruction zones near own goal."""
         x, y, theta = pos.x, pos.y, pos.theta
+        GK = self.own_goal_x()
+        goal_half = self.config.goal_width / 2.0
 
         # Zone 1: behind net
-        if -7.8 <= x <= -7.15 and -1.5 <= y <= 1.5:
-            x = -7.15
+        if GK - 0.8 <= x <= GK - 0.15 and -goal_half - 0.2 <= y <= goal_half + 0.2:
+            x = GK - 0.15
 
         # Zone 2: bottom post
-        if -7.4 <= x <= -7.0 and -1.5 <= y <= -0.85:
-            y = -0.85
+        if GK - 0.4 <= x <= GK and -goal_half - 0.2 <= y <= -goal_half + 0.45:
+            y = -goal_half + 0.45
 
         # Zone 3: top post
-        if -7.4 <= x <= -7.0 and 0.85 <= y <= 1.5:
-            y = 0.85
+        if GK - 0.4 <= x <= GK and goal_half - 0.45 <= y <= goal_half + 0.2:
+            y = goal_half - 0.45
 
         return Pose2D(x, y, theta)
 

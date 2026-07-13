@@ -264,6 +264,7 @@ class SoccerTeamRuntime(TeamCommandExecutor):
         self._control_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._last_command_log_at = 0.0
+        self._last_control_warn_at = 0.0
         self._started = False
 
     def start(self) -> None:
@@ -321,13 +322,15 @@ class SoccerTeamRuntime(TeamCommandExecutor):
                     started_at, self.tree.last_context, self.tree.last_executed_commands,
                 )
             except Exception as exc:
-                self._logger.warn(
-                    f"control loop failed: {exc.__class__.__name__}: {exc}",
-                    event="control_loop_failed",
-                    team_id=self.config.team_id,
-                    error_type=exc.__class__.__name__,
-                    error=str(exc),
-                )
+                if started_at - self._last_control_warn_at >= 2.0:
+                    self._last_control_warn_at = started_at
+                    self._logger.warn(
+                        f"control loop failed: {exc.__class__.__name__}: {exc}",
+                        event="control_loop_failed",
+                        team_id=self.config.team_id,
+                        error_type=exc.__class__.__name__,
+                        error=str(exc),
+                    )
                 self.robot_manager.stop_all("control loop error")
 
             elapsed = time.monotonic() - started_at

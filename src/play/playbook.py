@@ -156,6 +156,7 @@ class DefaultPlaybook(Playbook):
         self.register_role(GoalkeeperRole())
         self._keeper_could_challenge = False
         self._last_chaser_id: int | None = None
+        self._last_game_state: object = None
 
     def assign_roles(self, context: PlayContext) -> RoleAssignment:
         chaser_id = self.select_chaser(context)
@@ -251,6 +252,10 @@ class DefaultPlaybook(Playbook):
         targeting = self.kit.targeting
         ball = context.known_ball
         if slot == ReadySlot.KEEPER:
+            game = context.known_game
+            if self._last_game_state is not None and game.state != self._last_game_state:
+                self._keeper_could_challenge = False
+            self._last_game_state = game.state
             raw = targeting.ball_in_own_defensive_area(ball)
             hyst = self.kit.config.strategy.goalkeeper_challenge_hysteresis_m
 

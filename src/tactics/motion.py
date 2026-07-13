@@ -359,7 +359,7 @@ class MotionController:
             # Strafe mode: move in any direction without turning first.
             # Speed magnitude scales with distance (same linear gain), then
             # decompose into body-forward (vx) and body-lateral (vy) components.
-            raw_speed = _LINEAR_GAIN * distance
+            raw_speed = _LINEAR_GAIN * distance * speed_multiplier
             vx = raw_speed * math.cos(angle_error)
             vy = raw_speed * math.sin(angle_error)
 
@@ -408,7 +408,7 @@ class MotionController:
         """
         if distance <= 1e-6:
             return 0.0
-        raw = _LINEAR_GAIN * distance * math.cos(angle_error)
+        raw = _LINEAR_GAIN * distance * math.cos(angle_error) * speed_multiplier
         magnitude = abs(raw)
         speed_limit = self._config.strategy.max_linear_speed * speed_multiplier
         floor = min(_LINEAR_SPEED_FLOOR, speed_limit)

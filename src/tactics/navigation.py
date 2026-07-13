@@ -137,14 +137,16 @@ class ObstacleCollector:
 
         obstacles: list[Obstacle] = []
         r = 0.30
+        GK = self.config.field_length / -2.0
+        goal_half = self.config.goal_width / 2.0
 
         # Zone 1: behind net
-        for y in (-1.3, 0.0, 1.3):
-            obstacles.append(Obstacle(x=-7.5, y=y, radius=r))
+        for y in (-goal_half, 0.0, goal_half):
+            obstacles.append(Obstacle(x=GK - 0.5, y=y, radius=r))
 
         # Zones 2 & 3: post-side areas
         for sy in (-1.0, 1.0):
-            obstacles.append(Obstacle(x=-7.0, y=sy * 1.3, radius=r * 1.2))
+            obstacles.append(Obstacle(x=GK, y=sy * goal_half, radius=r * 1.2))
 
         return tuple(obstacles)
 

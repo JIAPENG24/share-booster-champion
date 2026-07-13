@@ -140,7 +140,7 @@ class ChaserRole(RoleStrategy):
                     player_id,
                     target,
                 ),
-                speed_multiplier=1.5,
+                speed_multiplier=2.0,
             ),
         )
 
@@ -203,7 +203,7 @@ class SupporterRole(RoleStrategy):
             lambda context: self.target(kit, player_id, context),
             reason_fn=lambda: "supporter hold",
             hold_vyaw=0.12,
-            speed_multiplier=1.3,
+            speed_multiplier=2.0,
         )
 
 
@@ -282,8 +282,8 @@ class GoalkeeperRole(RoleStrategy):
         if 0 < dt < 0.5:
             raw_vx = (ball.x - self._last_ball_x) / dt
             raw_vy = (ball.y - self._last_ball_y) / dt
-            self._smooth_vx = 0.7 * self._smooth_vx + 0.3 * raw_vx
-            self._smooth_vy = 0.7 * self._smooth_vy + 0.3 * raw_vy
+            self._smooth_vx = 0.5 * self._smooth_vx + 0.5 * raw_vx
+            self._smooth_vy = 0.5 * self._smooth_vy + 0.5 * raw_vy
         else:
             self._smooth_vx *= 0.9
             self._smooth_vy *= 0.9

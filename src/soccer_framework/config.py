@@ -75,11 +75,11 @@ class SoccerStrategyTuning:
     # Kick hysteresis
     # Use enter/exit thresholds plus delay to prevent flapping around distance boundaries.
     soccer_kick_enter_distance: float = 1.5  #  Enter kick mode when distance to ball is below enter.
-    soccer_kick_exit_distance: float = 1.5  #  Exit kick mode when distance to ball is above exit; must exceed enter.
+    soccer_kick_exit_distance: float = 1.5  #  Exit kick mode when distance to ball is above exit; exit_delay_sec provides hysteresis.
     soccer_kick_power: float = 1.5  #  Kick power.
     kickoff_kick_power: float = 1.0  #  Our-kickoff-specific kick power.
     soccer_kick_min_active_sec: float = 0.7  #  Minimum active kick duration to avoid instant switching.
-    soccer_kick_exit_delay_sec: float = 1.2  #  Delay after exit condition before actually leaving kick mode.
+    soccer_kick_exit_delay_sec: float = 0.8  #  Delay after exit condition before actually leaving kick mode.
 
     # Set plays and restarts
     restart_touch_distance: float = 0.45  #  Distance threshold for "touched the ball".
@@ -145,13 +145,13 @@ class SoccerStrategyTuning:
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
     goalkeeper_prediction_max_sec: float = 1.5  #  Max ball prediction horizon for goalkeeper clearance (s).
     goalkeeper_guard_arc_radius: float = 1.4  #  Arc radius for guard positioning (m).
-    goalkeeper_rush_speed_ratio: float = 0.7  #  Rush-speed estimation ratio for prediction (×rush_speed_multiplier).
+    goalkeeper_rush_speed_ratio: float = 0.8  #  Rush-speed estimation ratio for prediction (×rush_speed_multiplier).
 
     # Sideline and goal-line recovery
     sideline_recovery_margin_m: float = 0.90  #  Sideline distance threshold for recovery.
     sideline_recovery_infield_m: float = 1.60  #  Infield pull depth during recovery.
     sideline_recovery_advance_m: float = 0.75  #  Forward advance during recovery.
-    goal_line_recovery_margin_m: float = 0.08  #  Goal-line recovery margin; small to prevent crossing the line.
+    goal_line_recovery_margin_m: float = 0.15  #  Ball radius (0.11) + buffer (0.04); prevents early abandonment of balls still in play.
 
 
 @dataclass

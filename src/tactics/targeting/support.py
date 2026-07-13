@@ -1,8 +1,8 @@
 """Support-position targets plus teammate-spacing pushout.
 
 SafetyGuards ensure PLAY support targets only run with fresh ball and
-GameController data; support then stays behind the ball by ``support_depth_m``
-and ``support_lateral_m`` and pushes away from teammates to avoid stacking.
+GameController data; the supporter positions on the ball-to-own-goal-center
+line (max 3 m behind the ball) and pushes away from teammates to avoid stacking.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from ...soccer_framework import (
     SoccerConfig,
     PlayContext,
 )
-from ..geometry import clamp
 from ..geometry import TeamFieldFrame
 from .attack import PlayerAllowed
 
@@ -31,24 +30,26 @@ def support_target(
 ) -> tuple[Pose2D, bool]:
     """Compute this tick's supporter target Pose2D.
 
-    Stay behind the ball by ``support_depth_m`` and laterally split by player_id parity, clamped to our half.
-    Pushout: use :func:`_spaced_support_target` to avoid overlapping other supporters.
+    Position on the ball-to-own-goal-center line, at most 3 m behind the ball.
+    This keeps the supporter in the chaser's rear support zone without
+    crossing the ball, ready for a natural role switch.
+
+    Pushout: use :func:`_spaced_support_target` to avoid overlapping teammates.
 
     Returns (target, was_pushed).
     """
 
-    side = 1.0 if player_id % 2 == 0 else -1.0
-    lateral = config.strategy.support_lateral_m * side
     ball = context.known_ball
-    x = ball.x - config.strategy.support_depth_m
-    x = field.own_half_x(x, margin=0.35)
-    y = clamp(
-        ball.y + lateral,
-        -config.field_width / 2.0 + 0.45,
-        config.field_width / 2.0 - 0.45,
-    )
+    max_dist = 1.0 if ball.x <= 0 else 3.0
+    GK = field.own_goal_x()
+    dx = ball.x - GK
+    dy = ball.y
+    dist = math.hypot(dx, dy)
+    ratio = max(dist - max_dist, 0.0) / max(dist, 0.01)
+    tx = GK + dx * ratio
+    ty = dy * ratio
     target = field.clamp_inside_field(
-        Pose2D(x, y, field.face_ball_theta(x, y, ball))
+        Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball))
     )
     return _spaced_support_target(
         config,
