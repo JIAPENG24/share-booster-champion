@@ -372,10 +372,50 @@ class DefaultPlaybook(Playbook):
                 "in_attack": robot.pose.x > 0,
             })
             parts.append(f"p{player_id}:{role} d={dist:.2f}")
+
+        field_len = self.kit.config.field_length
+        zone = (
+            "danger" if ball.x < -field_len * 0.25 else
+            "defensive" if ball.x < 0 else
+            "midfield" if ball.x < field_len * 0.25 else
+            "attack"
+        )
+
+        closest = min(players, key=lambda p: p["ball_dist"]) if players else None
+
+        xs = [
+            robot.pose.x
+            for robot in context.teammates.values()
+            if robot is not None and robot.pose is not None
+        ]
+        centroid_x = round(sum(xs) / len(xs), 2) if xs else 0.0
+
+        game = context.game
+        our_score = -1
+        opp_score = -1
+        if game is not None:
+            our = game.get_team_state(self.kit.config.team_id)
+            opp = game.get_team_state(self.kit.config.opponent_team_id())
+            if our is not None:
+                our_score = our.score
+            if opp is not None:
+                opp_score = opp.score
+
+        parts.append(
+            f"zone={zone}"
+            + (f" close={closest['id']} d={closest['ball_dist']:.2f}" if closest else "")
+            + f" cx={centroid_x} score={our_score}:{opp_score}"
+        )
+
         logger.info(
             " ".join(parts),
             event="performance_summary",
             ball_x=round(ball.x, 2),
             ball_y=round(ball.y, 2),
+            ball_zone=zone,
             players=players,
+            closest_player=closest,
+            team_centroid_x=centroid_x,
+            our_score=our_score,
+            opp_score=opp_score,
         )
