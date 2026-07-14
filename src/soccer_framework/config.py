@@ -145,7 +145,7 @@ class SoccerStrategyTuning:
     goalkeeper_kick_power: float = 3.5  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
     goalkeeper_guard_arc_radius: float = 1.4  #  Arc radius for guard positioning (m).
-    goalkeeper_guard_depth_m: float = 1.0  #  Guard depth off the goal line for central balls (m).
+    goalkeeper_guard_depth_m: float = 1.3  #  Guard depth off the goal line for central balls (m).
     goalkeeper_rush_speed_ratio: float = 0.8  #  Rush-speed estimation ratio for prediction (×rush_speed_multiplier).
 
     # Ball trajectory prediction
