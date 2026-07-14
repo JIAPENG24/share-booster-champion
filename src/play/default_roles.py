@@ -97,6 +97,34 @@ class ChaserRole(RoleStrategy):
                     **extra,
                 )
 
+                ball = context.known_ball
+                lane_score = kit.targeting.shot_lane_score(context)
+                if decision == "shoot":
+                    logger.info(
+                        f"shot attempt ball=({ball.x:.3f},{ball.y:.3f}) "
+                        f"lane={lane_score:.3f} player={player_id}",
+                        event="shot_attempted",
+                        console=False,
+                        player_id=player_id,
+                        slot=slot.value,
+                        ball_x=round(ball.x, 3),
+                        ball_y=round(ball.y, 3),
+                        lane_score=round(lane_score, 3),
+                    )
+                elif decision == "pass":
+                    logger.info(
+                        f"pass attempt from=({ball.x:.3f},{ball.y:.3f}) "
+                        f"to=({target.x:.3f},{target.y:.3f}) player={player_id}",
+                        event="pass_attempted",
+                        console=False,
+                        player_id=player_id,
+                        slot=slot.value,
+                        ball_x=round(ball.x, 3),
+                        ball_y=round(ball.y, 3),
+                        target_x=round(target.x, 3),
+                        target_y=round(target.y, 3),
+                    )
+
         return target
 
     def _approach_reason(self, kit: "SoccerKit", player_id: int) -> str:
@@ -241,6 +269,34 @@ class SupporterRole(RoleStrategy):
                     target_y=round(target.y, 3),
                     **extra,
                 )
+
+                ball = context.known_ball
+                lane_score = kit.targeting.shot_lane_score(context)
+                if decision == "shoot":
+                    logger.info(
+                        f"supporter shot attempt ball=({ball.x:.3f},{ball.y:.3f}) "
+                        f"lane={lane_score:.3f} player={player_id}",
+                        event="shot_attempted",
+                        console=False,
+                        player_id=player_id,
+                        role="supporter",
+                        ball_x=round(ball.x, 3),
+                        ball_y=round(ball.y, 3),
+                        lane_score=round(lane_score, 3),
+                    )
+                elif decision == "pass":
+                    logger.info(
+                        f"supporter pass attempt from=({ball.x:.3f},{ball.y:.3f}) "
+                        f"to=({target.x:.3f},{target.y:.3f}) player={player_id}",
+                        event="pass_attempted",
+                        console=False,
+                        player_id=player_id,
+                        role="supporter",
+                        ball_x=round(ball.x, 3),
+                        ball_y=round(ball.y, 3),
+                        target_x=round(target.x, 3),
+                        target_y=round(target.y, 3),
+                    )
         return target
 
     def _kick_reason(
