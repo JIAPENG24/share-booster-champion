@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 # ----------------------------------------------------------------------
 
 # Approach alignment distance behind the ball while chasing, in meters.
-_CHASER_APPROACH_OFFSET = 0.22
+_CHASER_APPROACH_OFFSET = 0.15
 
 
 class ChaserRole(RoleStrategy):
