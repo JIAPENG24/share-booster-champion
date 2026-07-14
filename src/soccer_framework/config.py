@@ -140,7 +140,7 @@ class SoccerStrategyTuning:
     goalkeeper_challenge_area_x_ratio: float = 0.25  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
     goalkeeper_challenge_area_y: float = 2.2  #  Y-axis half-width for defensive challenge area (m).
     goalkeeper_challenge_hysteresis_m: float = 0.30  #  Hysteresis band to prevent guard↔clear oscillation at boundary.
-    goalkeeper_clear_hold_sec: float = 1.0  #  Minimum time the goalkeeper stays in clear state after entering it (s).
+    goalkeeper_clear_hold_sec: float = 1.5  #  Minimum time the goalkeeper stays in clear state after entering it (s).
     goalkeeper_rush_speed_multiplier: float = 2.2  #  Rush-out/retreat speed multiplier for goalkeeper.
     goalkeeper_kick_power: float = 3.5  #  Clearance kick power for goalkeeper.
     goalkeeper_lateral_speed: float = 1.0  #  Lateral speed limit for goalkeeper in strafe mode (m/s).
