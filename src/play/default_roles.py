@@ -211,7 +211,7 @@ class SupporterRole(RoleStrategy):
             player_id,
             lambda context: self.target(kit, player_id, context),
             reason_fn=lambda: "supporter hold",
-            hold_vyaw=0.12,
+            hold_vyaw=0.25,
             speed_multiplier=2.0,
         )
 
