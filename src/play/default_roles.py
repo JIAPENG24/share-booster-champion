@@ -143,7 +143,7 @@ class ChaserRole(RoleStrategy):
                     target,
                 ),
                 speed_multiplier=2.0,
-                kick_power=2.0,
+                kick_power=2.5,
             ),
         )
 
