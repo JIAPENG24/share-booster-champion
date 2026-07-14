@@ -229,6 +229,30 @@ class SupporterRole(RoleStrategy):
         player_id: int,
         context: PlayContext,
     ) -> bool:
+        ball = context.known_ball
+        robot = context.teammates.get(player_id)
+        if robot is None or robot.pose is None:
+            return False
+
+        gk_id = kit.config.goalkeeper_player_id()
+        game = context.known_game
+        my_dist = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
+
+        for tid, trobot in context.teammates.items():
+            if (
+                tid == player_id
+                or trobot.pose is None
+                or not kit.is_player_allowed(game, tid)
+            ):
+                continue
+            if tid == gk_id:
+                continue
+            teammate_dist = math.hypot(
+                ball.x - trobot.pose.x, ball.y - trobot.pose.y
+            )
+            if teammate_dist < my_dist - 0.3:
+                return False
+
         return True
 
     def kick_target(
@@ -613,14 +637,39 @@ class GoalkeeperRole(RoleStrategy):
         context: PlayContext,
     ) -> bool:
         self._ensure_updated(kit, context)
-        # Force kick when ball is critically close to own goal line,
-        # regardless of state machine state (prevents LATERAL oscillation
-        # from blocking the desperation clear).
         ball = context.known_ball
         margin = kit.config.strategy.gk_desperation_clear_margin_m
+
+        # Desperation clear always overrides — last line of defence.
         if ball is not None and ball.x < kit.field.own_goal_x() + margin:
             return True
-        return self._gk_state == self._RUSH_OUT
+
+        if self._gk_state != self._RUSH_OUT:
+            return False
+
+        # Even in RUSH_OUT, defer if an outfield teammate is closer to the
+        # ball (avoids GK–chaser double-kick contention).
+        gk_id = kit.config.goalkeeper_player_id()
+        game = context.known_game
+        robot = context.teammates.get(gk_id)
+        if robot is None or robot.pose is None:
+            return True
+        my_dist = math.hypot(ball.x - robot.pose.x, ball.y - robot.pose.y)
+
+        for tid, trobot in context.teammates.items():
+            if (
+                tid == gk_id
+                or trobot.pose is None
+                or not kit.is_player_allowed(game, tid)
+            ):
+                continue
+            teammate_dist = math.hypot(
+                ball.x - trobot.pose.x, ball.y - trobot.pose.y,
+            )
+            if teammate_dist < my_dist - 0.3:
+                return False
+
+        return True
 
     def kick_target(
         self,

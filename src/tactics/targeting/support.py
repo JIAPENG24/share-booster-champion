@@ -30,24 +30,69 @@ def support_target(
 ) -> tuple[Pose2D, bool]:
     """Compute this tick's supporter target Pose2D.
 
-    Position on the ball-to-own-goal-center line, at most 3 m behind the ball.
-    This keeps the supporter in the chaser's rear support zone without
-    crossing the ball, ready for a natural role switch.
+    Positions the supporter 2–4 m behind the ball (dynamic by field position),
+    offset laterally from the chaser–ball line by 10°–45° so the three form a
+    triangle rather than a straight line.  The offset widens as play advances
+    into the opponent half.
 
-    Pushout: use :func:`_spaced_support_target` to avoid overlapping teammates.
+    Pushout remains as a safety net via :func:`_spaced_support_target`.
 
     Returns (target, was_pushed).
     """
 
     ball = context.known_ball
-    max_dist = 1.0 if ball.x <= 0 else 3.0
+    game = context.known_game
+
+    # Find chaser: non-GK teammate closest to the ball
+    gk_id = config.goalkeeper_player_id()
+    chaser_pose = None
+    chaser_dist = float("inf")
+    for tid, trobot in context.teammates.items():
+        if (
+            tid == player_id
+            or trobot.pose is None
+            or not is_player_allowed(game, tid)
+        ):
+            continue
+        if tid == gk_id:
+            continue
+        dist = math.hypot(ball.x - trobot.pose.x, ball.y - trobot.pose.y)
+        if dist < chaser_dist:
+            chaser_dist = dist
+            chaser_pose = trobot.pose
+
+    # Dynamic distance from ball: 2.0 m (attack) → 4.0 m (defence)
+    t = max(0.0, min(1.0, (ball.x + config.field_length / 2.0) / config.field_length))
+    desired_dist = 2.0 + t * 2.0
+
+    # Base vector: ball → own goal centre
     GK = field.own_goal_x()
     dx = ball.x - GK
     dy = ball.y
-    dist = math.hypot(dx, dy)
-    ratio = max(dist - max_dist, 0.0) / max(dist, 0.01)
-    tx = GK + dx * ratio
-    ty = dy * ratio
+    dist_to_goal = math.hypot(dx, dy)
+    ratio = max(dist_to_goal - desired_dist, 0.0) / max(dist_to_goal, 0.01)
+    base_x = GK + dx * ratio
+    base_y = dy * ratio
+
+    # Lateral offset angle: 10° at own goal → 45° at opponent goal
+    lateral_rad = math.radians(10.0 + t * 35.0)
+
+    # Rotate the base position around the ball so supporter is not collinear
+    # with the chaser-ball line.  Side alternates by player_id parity.
+    side = 1.0 if player_id % 2 == 0 else -1.0
+    vx = base_x - ball.x
+    vy = base_y - ball.y
+    vlen = math.hypot(vx, vy)
+    if vlen > 1e-6:
+        cos_a = math.cos(lateral_rad)
+        sin_a = math.sin(lateral_rad)
+        rx = vx * cos_a - vy * sin_a * side
+        ry = vx * sin_a * side + vy * cos_a
+        tx = ball.x + rx
+        ty = ball.y + ry
+    else:
+        tx, ty = base_x, base_y
+
     target = field.clamp_inside_field(
         Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball))
     )

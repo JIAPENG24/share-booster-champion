@@ -70,6 +70,19 @@ def shot_block_target(
     offset = 2.5 if slot == ReadySlot.CENTER else 3.5
     offset = max(offset, avoid + 0.1)
     tx, ty = ball.x + ux * offset, ball.y + uy * offset
+
+    # SIDE lateral offset: create a triangle with CENTER instead of stacking
+    # on the same ball-to-goal ray.
+    if slot == ReadySlot.SIDE:
+        lateral_rad = math.radians(25.0)
+        side = -1.0 if ball.y >= 0.0 else 1.0
+        cos_a = math.cos(lateral_rad)
+        sin_a = math.sin(lateral_rad)
+        vx = tx - ball.x
+        vy = ty - ball.y
+        tx = ball.x + vx * cos_a - vy * sin_a * side
+        ty = ball.y + vx * sin_a * side + vy * cos_a
+
     return field.clamp_inside_field(
         Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball)),
         margin=0.35,
