@@ -62,19 +62,12 @@ class ChaserRole(RoleStrategy):
         context: PlayContext,
     ) -> Pose2D:
         slot = kit.config.ready_slot_for_player(player_id)
-        if slot == ReadySlot.SIDE:
-            target, decision = kit.targeting.select_clear_or_pass_target(
-                player_id,
-                context,
-                kit.is_player_allowed,
-            )
-        else:
-            target, decision = kit.targeting.select_kick_target(
-                player_id,
-                context,
-                kit.is_player_allowed,
-                was_shooting=self._last_decision == "shoot",
-            )
+        target, decision = kit.targeting.select_kick_target(
+            player_id,
+            context,
+            kit.is_player_allowed,
+            was_shooting=self._last_decision == "shoot",
+        )
 
         if decision != self._last_decision:
             self._last_decision = decision
@@ -87,7 +80,7 @@ class ChaserRole(RoleStrategy):
                     f"target=({target.x:.3f},{target.y:.3f}) "
                     f"player={player_id} slot={slot.value}"
                 )
-                if slot == ReadySlot.CENTER and decision in ("shoot", "dribble"):
+                if decision in ("shoot", "dribble"):
                     lane_score = kit.targeting.shot_lane_score(context)
                     extra["shot_lane_score"] = round(lane_score, 3)
                     msg += f" lane_score={lane_score:.3f}"
