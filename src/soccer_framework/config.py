@@ -158,7 +158,7 @@ class SoccerStrategyTuning:
 
     # Goalkeeper state machine
     gk_state_confirm_frames: int = 2  #  Consecutive frames to confirm a state entry transition.
-    gk_state_release_frames: int = 5  #  Consecutive frames to confirm a state exit transition.
+    gk_state_release_frames: int = 4  #  Consecutive frames to confirm a state exit transition.
     gk_target_smooth_speed: float = 2.0  #  Max target position change rate for trajectory smoothing (m/s).
     gk_rush_out_margin_m: float = 0.8  #  Entry margin for RUSH_OUT: predicted rest_x must be this deep inside area (m).
     gk_rush_out_exit_margin_m: float = 0.3  #  Exit margin for RUSH_OUT: rest_x must be this close to area boundary to exit (m).
