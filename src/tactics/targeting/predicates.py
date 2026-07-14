@@ -80,7 +80,7 @@ def ball_near_sideline(config: SoccerConfig, ball: BallState) -> bool:
 def ball_is_in_midfield_or_own_half(config: SoccerConfig, ball: BallState) -> bool:
     """Whether the ball is around midfield or our half; SIDE uses this to decide whether to challenge."""
 
-    return ball.x < config.field_length * 0.12
+    return ball.x < config.field_length * 0.20
 
 
 def sideline_sign(y: float) -> float:
@@ -144,4 +144,4 @@ def side_should_challenge(
         return False
     center_dist = math.hypot(ball.x - center.x, ball.y - center.y)
     side_dist = math.hypot(ball.x - side.x, ball.y - side.y)
-    return side_dist + 0.40 < center_dist
+    return side_dist + 0.20 < center_dist
