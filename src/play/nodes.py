@@ -157,7 +157,7 @@ class AttackSubtreeConfig:
     hold_vyaw: float = 0.0
     strafe: bool = False
     speed_multiplier: float = 1.0
-    kick_power: float | None = None
+    kick_power: float | None | Callable[[PlayContext], float | None] = None
     lateral_speed: float | None = None  # Override lateral speed limit when strafing (m/s).
 
 
@@ -233,7 +233,7 @@ class KickAction(py_trees.behaviour.Behaviour):
         kick_target_fn: TargetFn,
         *,
         reason_fn: KickReasonFn | None = None,
-        power: float | None = None,
+        power: float | None | Callable[[PlayContext], float | None] = None,
     ):
         super().__init__(f"KickAction({player_id})")
         self._kit = kit
@@ -261,12 +261,13 @@ class KickAction(py_trees.behaviour.Behaviour):
             if self._reason_fn is not None
             else _default_kick_reason(player_id)
         )
+        power = self._power(context) if callable(self._power) else self._power
         command = kit.motion.kick_command(
             player_id,
             context,
             kick_theta,
             reason,
-            power=self._power,
+            power=power,
         )
         self.blackboard.write(cmd_key(player_id), command)
         return py_trees.common.Status.SUCCESS

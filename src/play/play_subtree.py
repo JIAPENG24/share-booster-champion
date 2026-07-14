@@ -218,7 +218,7 @@ def _create_opp_defense_roles(
     """Slot-based per-player subtrees for Phase 3 OppKickoffDefense.
 
     Each player approaches the ball at a different speed multiplier:
-    CENTER: 0.5x  — intercept.
+    CENTER: 0.5x  — chase ball and shoot with power 7.5.
     SIDE:   1.3x  — press aggressively.
     KEEPER: 1.0x  — press actively.
     """
@@ -233,11 +233,37 @@ def _create_opp_defense_roles(
             speed_multiplier=speed,
         )
 
+    def _build_opp_center(kit: "SoccerKit", pid: int) -> py_trees.behaviour.Behaviour:
+        """Center chases ball and kicks toward opponent goal with power 7.5."""
+        target_fn = lambda ctx: kit.motion.approach_target(
+            ctx.known_ball, kit.field.attack_theta(), 0.4,
+        )
+        return py_trees.composites.Selector(
+            name=f"OppCenter({pid})",
+            memory=False,
+            children=[
+                py_trees.composites.Sequence(
+                    name=f"KickBranch({pid})",
+                    memory=False,
+                    children=[
+                        IsInKickRange(pid, kit.kicker),
+                        KickAtAngle(kit, pid, kit.field.attack_theta(),
+                                    power=7.5),
+                    ],
+                ),
+                MoveToTarget(
+                    kit, pid, target_fn,
+                    reason_fn=lambda: "opp center chase",
+                    speed_multiplier=0.5,
+                ),
+            ],
+        )
+
     children: list[py_trees.behaviour.Behaviour] = []
     for player_id in kit.config.player_ids:
         slot = kit.config.ready_slot_for_player(player_id)
         if slot == ReadySlot.CENTER:
-            children.append(_build_approach(kit, player_id, 0.5))
+            children.append(_build_opp_center(kit, player_id))
         elif slot == ReadySlot.SIDE:
             children.append(_build_approach(kit, player_id, 1.3))
         else:

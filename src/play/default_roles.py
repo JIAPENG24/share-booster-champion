@@ -127,6 +127,20 @@ class ChaserRole(RoleStrategy):
 
         return target
 
+    def _kick_power(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> float | None:
+        """Return 7.5 when shooting at goal center from own half, else default 2.5."""
+        robot = context.teammates.get(player_id)
+        if robot is None or robot.pose is None:
+            return 2.5
+        if robot.pose.x < 0 and self._last_decision == "shoot":
+            return 7.5
+        return 2.5
+
     def _approach_reason(self, kit: "SoccerKit", player_id: int) -> str:
         slot = kit.config.ready_slot_for_player(player_id)
         return f"{slot.value} approach ball"
@@ -164,7 +178,9 @@ class ChaserRole(RoleStrategy):
                     target,
                 ),
                 speed_multiplier=2.0,
-                kick_power=2.5,
+                kick_power=lambda context: self._kick_power(
+                    kit, player_id, context,
+                ),
             ),
         )
 
