@@ -134,7 +134,7 @@ class SoccerStrategyTuning:
     # Support positioning
     support_depth_m: float = 1.05  #  Supporter depth behind the ball carrier.
     support_lateral_m: float = 1.25  #  Lateral spacing for supporters.
-    support_min_spacing_m: float = 1.15  #  Minimum teammate spacing to avoid clustering.
+    support_min_spacing_m: float = 0.9  #  Minimum teammate spacing to avoid clustering.
 
     # Goalkeeping and challenges
     goalkeeper_challenge_area_x_ratio: float = 0.25  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
