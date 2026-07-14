@@ -128,7 +128,7 @@ class SoccerStrategyTuning:
     pass_lane_clearance: float = 0.75  #  Required clearance around the pass lane to avoid interception.
 
     # Dribbling
-    dribble_advance_m: float = 1.15  #  Forward distance advanced by one dribble target.
+    dribble_advance_m: float = 1.5  #  Forward distance advanced by one dribble target.
     dribble_center_pull: float = 0.65  #  Pull toward centerline while dribbling to avoid hugging the sideline.
 
     # Support positioning
