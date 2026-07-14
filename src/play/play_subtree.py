@@ -248,7 +248,7 @@ def _create_opp_defense_roles(
                     children=[
                         IsInKickRange(pid, kit.kicker),
                         KickAtAngle(kit, pid, kit.field.attack_theta(),
-                                    power=7.5),
+                                    power=10.0),
                     ],
                 ),
                 MoveToTarget(

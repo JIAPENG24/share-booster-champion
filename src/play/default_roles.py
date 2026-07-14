@@ -133,13 +133,13 @@ class ChaserRole(RoleStrategy):
         player_id: int,
         context: PlayContext,
     ) -> float | None:
-        """Return 7.5 when shooting at goal center from own half, else default 2.5."""
+        """Return 7.5 when shooting at goal center from own half, else default 10.0."""
         robot = context.teammates.get(player_id)
         if robot is None or robot.pose is None:
-            return 2.5
+            return 10.0
         if robot.pose.x < 0 and self._last_decision == "shoot":
             return 7.5
-        return 2.5
+        return 10.0
 
     def _approach_reason(self, kit: "SoccerKit", player_id: int) -> str:
         slot = kit.config.ready_slot_for_player(player_id)
@@ -368,7 +368,7 @@ class SupporterRole(RoleStrategy):
                 hold_vyaw=0.25,
                 strafe=True,
                 speed_multiplier=2.0,
-                kick_power=2.5,
+                kick_power=10.0,
             ),
         )
 
