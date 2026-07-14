@@ -137,7 +137,7 @@ class SoccerStrategyTuning:
     support_min_spacing_m: float = 0.9  #  Minimum teammate spacing to avoid clustering.
 
     # Goalkeeping and challenges
-    goalkeeper_challenge_area_x_ratio: float = 0.25  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
+    goalkeeper_challenge_area_x_ratio: float = 0.20  #  X-axis ratio for defensive challenge area (field_length * ratio = area boundary).
     goalkeeper_challenge_area_y: float = 2.2  #  Y-axis half-width for defensive challenge area (m).
     goalkeeper_challenge_hysteresis_m: float = 0.30  #  Hysteresis band to prevent guard↔clear oscillation at boundary.
     goalkeeper_clear_hold_sec: float = 1.5  #  Minimum time the goalkeeper stays in clear state after entering it (s).
