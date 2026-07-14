@@ -157,6 +157,7 @@ class SupporterRole(RoleStrategy):
         self._was_pushed: bool = False
         self._pushout_logged: bool = False
         self._last_pushout_log_at: float = 0.0
+        self._last_decision: str | None = None
 
     def target(
         self,
@@ -194,18 +195,84 @@ class SupporterRole(RoleStrategy):
 
         return target
 
+    def wants_to_kick(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> bool:
+        return True
+
+    def kick_target(
+        self,
+        kit: "SoccerKit",
+        player_id: int,
+        context: PlayContext,
+    ) -> Pose2D:
+        target, decision = kit.targeting.select_kick_target(
+            player_id,
+            context,
+            kit.is_player_allowed,
+            was_shooting=self._last_decision == "shoot",
+        )
+        if decision != self._last_decision:
+            self._last_decision = decision
+            logger = kit.logger
+            if logger is not None:
+                extra: dict[str, object] = {}
+                msg = (
+                    f"supporter kick decision={decision} "
+                    f"ball=({context.known_ball.x:.3f},{context.known_ball.y:.3f}) "
+                    f"target=({target.x:.3f},{target.y:.3f}) "
+                    f"player={player_id}"
+                )
+                if decision in ("shoot", "dribble"):
+                    lane_score = kit.targeting.shot_lane_score(context)
+                    extra["shot_lane_score"] = round(lane_score, 3)
+                    msg += f" lane_score={lane_score:.3f}"
+                logger.info(
+                    msg,
+                    event="supporter_kick_decision",
+                    player_id=player_id,
+                    decision=decision,
+                    ball_x=round(context.known_ball.x, 3),
+                    ball_y=round(context.known_ball.y, 3),
+                    target_x=round(target.x, 3),
+                    target_y=round(target.y, 3),
+                    **extra,
+                )
+        return target
+
+    def _kick_reason(
+        self,
+        kit: "SoccerKit",
+        target: Pose2D,
+    ) -> str:
+        decision = self._last_decision or "unknown"
+        return kit.targeting.kick_reason(target, default=f"supporter kick decision={decision}")
+
     def build_subtree(
         self,
         kit: "SoccerKit",
         player_id: int,
     ) -> py_trees.behaviour.Behaviour:
-        return MoveToTarget(
+        return build_attack_subtree(
             kit,
             player_id,
-            lambda context: self.target(kit, player_id, context),
-            reason_fn=lambda: "supporter hold",
-            hold_vyaw=0.25,
-            speed_multiplier=2.0,
+            AttackSubtreeConfig(
+                target_fn=lambda context: self.target(kit, player_id, context),
+                kick_target_fn=lambda context: self.kick_target(
+                    kit, player_id, context,
+                ),
+                wants_kick_fn=lambda context: self.wants_to_kick(
+                    kit, player_id, context,
+                ),
+                reason_fn=lambda: "supporter hold",
+                kick_reason_fn=lambda target: self._kick_reason(kit, target),
+                hold_vyaw=0.25,
+                speed_multiplier=2.0,
+                kick_power=2.5,
+            ),
         )
 
 
