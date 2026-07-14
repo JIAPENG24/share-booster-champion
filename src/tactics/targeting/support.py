@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 from ...soccer_framework import (
+    BallState,
     Pose2D,
     SoccerConfig,
     PlayContext,
@@ -30,12 +31,18 @@ def support_target(
 ) -> tuple[Pose2D, bool]:
     """Compute this tick's supporter target Pose2D.
 
-    Positions the supporter 2–4 m behind the ball (dynamic by field position),
-    offset laterally from the chaser–ball line by 10°–45° so the three form a
-    triangle rather than a straight line.  The offset widens as play advances
-    into the opponent half.
+    Positions the supporter behind the **chaser** (not the ball) at a dynamic
+    distance of 1–4 m, offset laterally by 10°–45° to form a triangle.
+    Always faces the ball via ``theta = face_ball_theta`` so the supporter can
+    react instantly when the ball passes the chaser.
 
-    Pushout remains as a safety net via :func:`_spaced_support_target`.
+    Distance rule (relative to chaser):
+      current < 1 m → target at 1 m  (back up, strafe mode keeps facing ball)
+      current > 4 m → target at 4 m  (close in)
+      otherwise     → keep distance, only lateral strafe to adjust triangle angle
+
+    Falls back to ball→own-goal line positioning when no chaser or own pose is
+    available.
 
     Returns (target, was_pushed).
     """
@@ -61,37 +68,16 @@ def support_target(
             chaser_dist = dist
             chaser_pose = trobot.pose
 
-    # Dynamic distance from ball: 2.0 m (attack) → 4.0 m (defence)
-    t = max(0.0, min(1.0, (ball.x + config.field_length / 2.0) / config.field_length))
-    desired_dist = 2.0 + t * 2.0
+    own_robot = context.teammates.get(player_id)
 
-    # Base vector: ball → own goal centre
-    GK = field.own_goal_x()
-    dx = ball.x - GK
-    dy = ball.y
-    dist_to_goal = math.hypot(dx, dy)
-    ratio = max(dist_to_goal - desired_dist, 0.0) / max(dist_to_goal, 0.01)
-    base_x = GK + dx * ratio
-    base_y = dy * ratio
-
-    # Lateral offset angle: 10° at own goal → 45° at opponent goal
-    lateral_rad = math.radians(10.0 + t * 35.0)
-
-    # Rotate the base position around the ball so supporter is not collinear
-    # with the chaser-ball line.  Side alternates by player_id parity.
-    side = 1.0 if player_id % 2 == 0 else -1.0
-    vx = base_x - ball.x
-    vy = base_y - ball.y
-    vlen = math.hypot(vx, vy)
-    if vlen > 1e-6:
-        cos_a = math.cos(lateral_rad)
-        sin_a = math.sin(lateral_rad)
-        rx = vx * cos_a - vy * sin_a * side
-        ry = vx * sin_a * side + vy * cos_a
-        tx = ball.x + rx
-        ty = ball.y + ry
+    # Need both chaser pose and own pose for chaser-relative positioning.
+    if chaser_pose is not None and own_robot is not None and own_robot.pose is not None:
+        tx, ty = _chaser_relative_target(
+            config, ball, chaser_pose, own_robot.pose, player_id,
+        )
     else:
-        tx, ty = base_x, base_y
+        # Fallback: ball → own-goal line at 2.5 m behind ball
+        tx, ty = _goal_line_fallback(config, field, ball)
 
     target = field.clamp_inside_field(
         Pose2D(tx, ty, field.face_ball_theta(tx, ty, ball))
@@ -104,6 +90,75 @@ def support_target(
         target,
         is_player_allowed,
     )
+
+
+def _chaser_relative_target(
+    config: SoccerConfig,
+    ball: BallState,
+    chaser_pose: Pose2D,
+    own_pose: Pose2D,
+    player_id: int,
+) -> tuple[float, float]:
+    """Compute supporter position behind the chaser with distance clamping.
+
+    Direction: ball → chaser extended (the "behind" direction).
+    Distance: clamped to [1, 4] m from the chaser based on current separation.
+    Angle:    10°–45° lateral offset (dynamic by ball field position).
+    """
+
+    # Behind-direction: from ball through chaser
+    bc_dx = chaser_pose.x - ball.x
+    bc_dy = chaser_pose.y - ball.y
+    bc_len = math.hypot(bc_dx, bc_dy)
+    if bc_len < 1e-6:
+        bc_dx, bc_dy = -1.0, 0.0
+        bc_len = 1.0
+    bx = bc_dx / bc_len
+    by = bc_dy / bc_len
+
+    # Current supporter → chaser distance
+    sc_dx = own_pose.x - chaser_pose.x
+    sc_dy = own_pose.y - chaser_pose.y
+    sc_dist = math.hypot(sc_dx, sc_dy)
+
+    # Clamp desired distance to [1, 4]
+    if sc_dist < 1.0:
+        desired_dist = 1.0
+    elif sc_dist > 4.0:
+        desired_dist = 4.0
+    else:
+        desired_dist = sc_dist
+
+    # Triangle angle: 10° in defence → 45° in attack
+    t = max(0.0, min(1.0, (ball.x + config.field_length / 2.0) / config.field_length))
+    angle_rad = math.radians(10.0 + t * 35.0)
+
+    # Rotate behind-direction by angle_rad; side alternates by player_id parity
+    side = 1.0 if player_id % 2 == 0 else -1.0
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    dir_x = bx * cos_a - by * sin_a * side
+    dir_y = bx * sin_a * side + by * cos_a
+
+    tx = chaser_pose.x + desired_dist * dir_x
+    ty = chaser_pose.y + desired_dist * dir_y
+    return tx, ty
+
+
+def _goal_line_fallback(
+    config: SoccerConfig,
+    field: TeamFieldFrame,
+    ball: BallState,
+) -> tuple[float, float]:
+    """Ball → own-goal line at 2.5 m behind the ball (used when no chaser)."""
+
+    GK = field.own_goal_x()
+    dx = ball.x - GK
+    dy = ball.y
+    dist = math.hypot(dx, dy)
+    max_dist = 2.5
+    ratio = max(dist - max_dist, 0.0) / max(dist, 0.01)
+    return GK + dx * ratio, dy * ratio
 
 
 # Teammate spacing pushout

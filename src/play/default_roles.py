@@ -350,6 +350,7 @@ class SupporterRole(RoleStrategy):
                 reason_fn=lambda: "supporter hold",
                 kick_reason_fn=lambda target: self._kick_reason(kit, target),
                 hold_vyaw=0.25,
+                strafe=True,
                 speed_multiplier=2.0,
                 kick_power=2.5,
             ),
