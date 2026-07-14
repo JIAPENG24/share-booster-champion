@@ -219,7 +219,7 @@ def shot_lane_is_clear(
         0.0,
         obstacles.opponent_obstacles(context),
     )
-    threshold = 0.35 if was_shooting else 0.55
+    threshold = 0.25 if was_shooting else 0.45
     return score >= threshold
 
 
