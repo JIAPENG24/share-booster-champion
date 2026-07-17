@@ -1,7 +1,7 @@
 # Booster Champion 3v3 — 仿真足球 Agent 开发指南
 
 ##Booster Studio开发者社群
-飞书连接及二维码：
+飞书连接：
 https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=aa7ja218-5029-4473-bbfa-b94628a4ffcf
 
 ## §1 项目简介 (Project Overview)
